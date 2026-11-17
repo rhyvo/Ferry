@@ -916,14 +916,21 @@ struct GameSettingsView: View {
                             }
                             .help("Which OpenGL draws OpenGL games, and DirectX 9 and older through WineD3D. WineMetalGL supports OpenGL 4.6 on Metal; Apple's OpenGL stops at 4.1 but is long-tested. Try Apple's if a game draws incorrectly.")
                             let hasKosmicKrisp = model.runtimes.kosmicKrispDriver() != nil
-                            Picker(selection: game.settings.mullionVulkan) {
+                            let vulkanOnRosetta = game.wrappedValue.settings.mullionRosetta && model.runtimes.info[.x64] != nil && model.runtimes.rosetta
+                            Picker(selection: Binding(
+                                get: { vulkanOnRosetta ? "" : game.wrappedValue.settings.mullionVulkan },
+                                set: { if !vulkanOnRosetta { game.wrappedValue.settings.mullionVulkan = $0 } })) {
                                 Text("MoltenVK (default)").tag("")
                                 Text("KosmicKrisp (from Mach9)").tag("kosmickrisp")
                             } label: {
-                                Text("Vulkan driver").foregroundStyle(hasKosmicKrisp ? .primary : .tertiary)
-                                if !hasKosmicKrisp { Text("Install Mach9 in Settings ▸ Components first.") }
+                                Text("Vulkan driver").foregroundStyle(hasKosmicKrisp && !vulkanOnRosetta ? .primary : .tertiary)
+                                if vulkanOnRosetta {
+                                    Text("Only with CPU translation set to FEX: KosmicKrisp doesn't run through Rosetta 2, which uses MoltenVK.")
+                                } else if !hasKosmicKrisp {
+                                    Text("Install Mach9 in Settings ▸ Components first.")
+                                }
                             }
-                                .disabled(!hasKosmicKrisp)
+                                .disabled(!hasKosmicKrisp || vulkanOnRosetta)
                                 .help("What Vulkan games, and the DXVK and VKD3D-Proton renderers, draw through. KosmicKrisp runs all of Vulkan 1.4 on Metal; MoltenVK is the long-tested default. Try the other one if a game crashes or draws wrong.")
                         }
                         if model.resolvedEngine(game.wrappedValue) == .mach9 {
@@ -944,7 +951,9 @@ struct GameSettingsView: View {
                                 if model.resolvedEngine(game.wrappedValue) == .mullion && game.wrappedValue.arch == .x86 {
                                     let onRosetta = game.wrappedValue.settings.mullionRosetta && model.runtimes.info[.x64] != nil && model.runtimes.rosetta
                                     let ready = model.betaDXVK32() != nil && model.runtimes.kosmicKrispDriver() != nil && !onRosetta
-                                    Toggle(isOn: game.settings.dxvkBeta) {
+                                    Toggle(isOn: Binding(
+                                        get: { ready && game.wrappedValue.settings.dxvkBeta },
+                                        set: { if ready { game.wrappedValue.settings.dxvkBeta = $0 } })) {
                                         Text("DXVK 3 on KosmicKrisp (beta)")
                                         if !ready {
                                             Text(onRosetta
