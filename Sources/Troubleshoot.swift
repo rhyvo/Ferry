@@ -7,7 +7,7 @@ struct TroubleshootView: View {
     let gameID: UUID
 
     enum Symptom: String, CaseIterable, Identifiable {
-        case blackScreen, blackObjects, crashes, slow, sound, blankLauncher, mouseStuck
+        case blackScreen, blackObjects, crashes, slow, sound, blankLauncher, mouseStuck, pointerShows
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -18,6 +18,7 @@ struct TroubleshootView: View {
             case .sound: return "The sound crackles"
             case .blankLauncher: return "A launcher's window or login page is blank"
             case .mouseStuck: return "The mouse is stuck inside the window"
+            case .pointerShows: return "The Mac's mouse pointer shows while I play"
             }
         }
         var icon: String {
@@ -29,6 +30,7 @@ struct TroubleshootView: View {
             case .sound: return "speaker.wave.2"
             case .blankLauncher: return "macwindow"
             case .mouseStuck: return "cursorarrow.rays"
+            case .pointerShows: return "cursorarrow"
             }
         }
     }
@@ -127,6 +129,15 @@ struct TroubleshootView: View {
             if g.settings.captureFullscreen {
                 toggleStep(g, title: "Exclusive full-screen mode", detail: "It's on for this program. It lets Wine take over the display and hold the mouse whenever a window covers the screen, which suits games but traps the mouse in apps.",
                            key: "exclusive", isOn: g.settings.captureFullscreen) { $0.settings.captureFullscreen.toggle() }
+            }
+        case .pointerShows:
+            if engine == .mach9 && !g.settings.captureFullscreen {
+                toggleStep(g, title: "Exclusive full-screen mode",
+                           detail: "Mach9 normally shows full-screen games at a scaled, virtual resolution. In that mode it keeps the mouse in the game but can leave the Mac's pointer on screen. Exclusive full-screen lets the game hide it; the screen switches resolution when the game starts and quits.",
+                           key: "exclusive", isOn: g.settings.captureFullscreen) { $0.settings.captureFullscreen.toggle() }
+            } else {
+                note("Click once inside the game so it's the active app: macOS only lets the app in front hide the pointer. If a game's own menus use the mouse, the pointer comes back while they're open.")
+                switchEngineStep(g)
             }
         case .blankLauncher:
             if model.webView2Installed {
