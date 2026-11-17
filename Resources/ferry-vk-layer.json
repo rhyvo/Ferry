@@ -1,0 +1,11 @@
+{
+    "file_format_version": "1.1.0",
+    "layer": {
+        "name": "VK_LAYER_FERRY_moltenvk_features",
+        "type": "GLOBAL",
+        "library_path": "./libferry_vk_layer.dylib",
+        "api_version": "1.4.0",
+        "implementation_version": "1",
+        "description": "Hides geometry shaders and cull distance, which Wine Staging's MoltenVK advertises but refuses (Helpers/ferry-vk-layer.c)"
+    }
+}

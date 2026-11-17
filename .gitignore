@@ -1,0 +1,9 @@
+# Built app (recreated by ./build.sh)
+build/
+# macOS Finder files
+.DS_Store
+.worktrees/
+.superpowers/
+# Personal notes and drafts, kept out of the repository
+docs/
+*-bug-report.md

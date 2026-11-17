@@ -1,0 +1,1565 @@
+import AppKit
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct ContentView: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+    @Environment(\.openWindow) private var openWindow
+    @State private var targeted = false
+    @State private var editing: Game? = nil
+
+    var body: some View {
+        if model.setupComplete && !model.setupRunning {
+            library
+        } else {
+            SetupView()
+        }
+    }
+
+    private var library: some View {
+        VStack(spacing: 0) {
+            if !runtimes.availableUpdates.isEmpty && !model.updating {
+                UpdateBanner()
+                    .padding([.horizontal, .top], 16)
+            }
+            if model.librariesOutdated {
+                LibraryUpdateBanner()
+                    .padding([.horizontal, .top], 16)
+            }
+            DropZone(targeted: targeted)
+                .padding(16)
+            if model.games.isEmpty {
+                Spacer()
+                Text("Games and programs you add show up here.")
+                    .foregroundStyle(.secondary)
+                Button {
+                    model.installSteam()
+                } label: {
+                    Label("Install Steam", systemImage: "arrow.down.circle")
+                }
+                .padding(.top, 6)
+                Spacer()
+            } else {
+                List {
+                    ForEach(model.games) { game in
+                        GameRow(game: game) { editing = game }
+                    }
+                }
+                .listStyle(.inset)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            var checking = false
+            for url in urls {
+                if FileManager.default.isDirectory(url) || AnalyzerModel.isArchive(url) {
+                    if !checking { AnalyzerModel.shared.analyze(url) }
+                    checking = true
+                    openWindow(id: "analyzer")
+                } else {
+                    model.add(url)
+                }
+            }
+            return !urls.isEmpty
+        } isTargeted: { targeted = $0 }
+        .sheet(item: $editing) { game in
+            GameSettingsView(gameID: game.id)
+                .environmentObject(model)
+                .environmentObject(runtimes)
+        }
+        .sheet(isPresented: $model.showStorage) {
+            StorageView()
+                .environmentObject(model)
+        }
+        .sheet(item: Binding(
+            get: { model.troubleshootGame.map { TroubleshootTarget(id: $0) } },
+            set: { model.troubleshootGame = $0?.id }
+        )) { target in
+            TroubleshootView(gameID: target.id)
+                .environmentObject(model)
+        }
+        .sheet(item: Binding(
+            get: { model.modsGame.map { TroubleshootTarget(id: $0) } },
+            set: { model.modsGame = $0?.id }
+        )) { target in
+            ModsView(gameID: target.id)
+                .environmentObject(model)
+        }
+        .modifier(ErrorAlert())
+        .toolbar {
+            ToolbarItem {
+                Menu {
+                    Button("Add Windows Program…") { model.chooseFile() }
+                    Button("Install Steam") { model.installSteam() }
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .help("Add a Windows game or program, or install Steam")
+                .accessibilityLabel("Add")
+            }
+            ToolbarItem {
+                Button { openWindow(id: "analyzer") } label: { Label("Check Compatibility", systemImage: "stethoscope") }
+                    .help("Check a program, folder or archive before adding it")
+            }
+            ToolbarItem {
+                Button { openWindow(id: "taskManager") } label: { Label("Task Manager", systemImage: "list.bullet.rectangle") }
+                    .help("See every Windows program Ferry is running, and end stuck ones")
+            }
+            ToolbarItem {
+                Button { model.showStorage = true } label: { Label("Storage", systemImage: "internaldrive") }
+                    .help("See what Ferry keeps on disk and free up space")
+            }
+            ToolbarItem {
+                SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    .help("Engines, defaults and system setup")
+            }
+        }
+    }
+}
+
+struct ErrorAlert: ViewModifier {
+    @EnvironmentObject var model: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Something went wrong", isPresented: Binding(
+                get: { model.errorMessage != nil },
+                set: { if !$0 { model.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.errorMessage ?? "")
+            }
+            .alert("Ferry", isPresented: Binding(
+                get: { model.noticeMessage != nil },
+                set: { if !$0 { model.noticeMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.noticeMessage ?? "")
+            }
+            .alert("\(model.launchFailure?.name ?? "The game") closed right after starting",
+                   isPresented: Binding(get: { model.launchFailure != nil }, set: { if !$0 { model.launchFailure = nil } }),
+                   presenting: model.launchFailure) { failure in
+                let logFix = failure.findings.first.map { !$0.switchesEngine } ?? false
+                if let next = failure.next {
+                    Button("Try \(next.short)") { model.retry(failure) }.keyboardShortcut(logFix ? nil : .defaultAction)
+                }
+                Button("Troubleshoot…") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.troubleshootGame = failure.gameID }
+                }
+                .keyboardShortcut(logFix || failure.next == nil ? .defaultAction : nil)
+                Button("I Closed It", role: .cancel) {}
+            } message: { failure in
+                Text(launchFailureMessage(failure))
+            }
+            .alert("Free up \(DiskUsage.text(model.storageSuggestion ?? 0))?", isPresented: Binding(
+                get: { model.storageSuggestion != nil },
+                set: { if !$0 { model.storageSuggestion = nil } }
+            )) {
+                Button("Review") { model.showStorage = true }
+                Button("Not Now", role: .cancel) {}
+            } message: {
+                Text("Some programs have Windows environments from engines they no longer use, or there are leftovers from removed programs. They aren't needed and can be deleted without losing saves.")
+            }
+            .alert("Low Power Mode is on", isPresented: Binding(
+                get: { model.lowPowerPrompt != nil },
+                set: { if !$0 { model.lowPowerPrompt = nil } }
+            ), presenting: model.lowPowerPrompt) { id in
+                Button("Play Anyway") {
+                    model.lowPowerAcknowledged = true
+                    model.play(id)
+                }
+                Button("Open Battery Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension") { NSWorkspace.shared.open(url) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("macOS slows the processor and graphics in Low Power Mode, so games run noticeably slower and their sound can crackle. Turn it off in System Settings ▸ Battery, or Control Center, for the best performance.")
+            }
+            .alert("\(model.rovPrompt.flatMap { model.game($0)?.name } ?? "This game") draws with ROV", isPresented: Binding(
+                get: { model.rovPrompt != nil },
+                set: { if !$0 { model.rovPrompt = nil } }
+            ), presenting: model.rovPrompt) { id in
+                Button("Turn On Hide ROV Support") {
+                    if var g = model.game(id) { g.settings.hideROV = true; model.update(g) }
+                }
+                Button("Not Now", role: .cancel) {}
+            } message: { _ in
+                Text("Ferry noticed it uses rasterizer-ordered views (ROV), a drawing method D3DMetal says it supports but can show as a black screen or black objects. Hide ROV support makes the game use its ordinary method. If the game already looks right, you can leave it off.")
+            }
+            .alert("Also add \(model.pairOffer?.role.label?.lowercased() ?? "the other program")?",
+                   isPresented: Binding(get: { model.pairOffer != nil }, set: { if !$0 { model.pairOffer = nil } }),
+                   presenting: model.pairOffer) { offer in
+                Button("Add \(offer.role.label ?? "It")") { model.addPartnerProgram(offer) }
+                    .keyboardShortcut(.defaultAction)
+                Button("Not Now", role: .cancel) {}
+            } message: { offer in
+                Text("\(offer.gameName) has a separate \(offer.role.label?.lowercased() ?? "") program, \(offer.program.lastPathComponent). Ferry can add it as its own entry, sharing this game's Windows environment and saves, so you can start either one directly instead of switching inside the game.")
+            }
+            .alert("\(model.installedOffer?.installer ?? "The installer") installed \(model.installedOffer?.programs.first?.name ?? "a program")",
+                   isPresented: Binding(get: { model.installedOffer?.programs.count == 1 }, set: { if !$0 { model.installedOffer = nil } }),
+                   presenting: model.installedOffer) { offer in
+                Button("Use \(offer.programs[0].name) for This Entry") { model.useInstalledProgram(offer.programs[0], from: offer) }
+                    .keyboardShortcut(.defaultAction)
+                Button("Not Now", role: .cancel) {}
+            } message: { offer in
+                Text("Play still runs the installer. Ferry can start \(offer.programs[0].name) instead, with the engine the installer used. You can also choose a program later with Change Executable.")
+            }
+            .confirmationDialog("\(model.installedOffer?.installer ?? "The installer") installed \(model.installedOffer?.programs.count ?? 0) programs",
+                                isPresented: Binding(get: { (model.installedOffer?.programs.count ?? 0) > 1 }, set: { if !$0 { model.installedOffer = nil } }),
+                                titleVisibility: .visible, presenting: model.installedOffer) { offer in
+                ForEach(offer.programs, id: \.exe) { program in
+                    Button("Use \(program.name)") { model.useInstalledProgram(program, from: offer) }
+                }
+                Button("Not Now", role: .cancel) {}
+            } message: { _ in
+                Text("Play still runs the installer. Choose the program this entry should start instead; it keeps the engine the installer used. You can also choose later with Change Executable.")
+            }
+            .alert("Updates available", isPresented: $model.showUpdatePrompt) {
+                Button("Update Now") { model.installUpdates() }
+                Button("Later", role: .cancel) {}
+            } message: {
+                Text(model.updateSummary)
+            }
+    }
+
+    private func launchFailureMessage(_ f: LaunchFailure) -> String {
+        var text = "If you closed it yourself, you can ignore this.\n\nIf it closed on its own, or you closed it because it wasn't working (a black screen, an error, a freeze), \(f.failed.short) probably can't run it."
+        if let next = f.next {
+            text += " Try \(next.short): it becomes this game's engine if it works."
+        } else {
+            text += " There's no other engine left to try automatically."
+        }
+        if let found = f.findings.first {
+            text += "\n\nFerry read the game log and found a likely cause: \(found.title.prefix(1).lowercased() + found.title.dropFirst()). Troubleshoot shows it and the fix."
+        } else {
+            text += " Troubleshoot walks you through fixes for what you saw, including the game log."
+            if !f.logTail.isEmpty { text += "\n\nEnd of the game log:\n" + f.logTail }
+        }
+        return text
+    }
+}
+
+struct LibraryUpdateBanner: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "shippingbox.fill")
+                .font(.title3)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New Windows libraries").font(.callout.weight(.semibold))
+                Text("Includes a Visual C++ fix for D3DMetal games, plus .NET 6 and 8, PhysX and video codecs. New games get them automatically after installing; for games already in Ferry, use Reinstall Windows Libraries in their settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Install") { model.runSetup() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.tint.opacity(0.12)))
+    }
+}
+
+struct UpdateBanner: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Updates available").font(.callout.weight(.semibold))
+                Text(runtimes.availableUpdates.map { "\($0.title) \(runtimes.latest[$0] ?? "")" }.joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Update") { model.installUpdates() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.tint.opacity(0.12)))
+    }
+}
+
+struct SetupView: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+    @State private var measured: [Component: Int]? = nil
+    @State private var selectionVersion = 0
+
+    private var showingProgress: Bool {
+        model.setupRunning || model.setupSteps.values.contains { $0 != .pending }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 18) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 84, height: 84)
+                    VStack(spacing: 6) {
+                        Text("Set up Ferry")
+                            .font(.largeTitle.weight(.bold))
+                        Text("Install everything Windows games and programs need, once. After this, dropping in a game or app just works.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 460)
+                    }
+
+                    if !showingProgress {
+                        ComponentChecklist { selectionVersion += 1 }
+                            .padding(16)
+                            .frame(maxWidth: 520, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.secondary.opacity(0.07)))
+                    } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(SetupStep.allCases.filter { Platform.mach9Available || ![.mach9, .mach9Template].contains($0) }) { step in
+                            HStack(alignment: .top, spacing: 10) {
+                                stateIcon(model.setupSteps[step] ?? .pending)
+                                    .frame(width: 18, height: 18)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(step.title)
+                                        .font(.callout.weight(.medium))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(step.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: 480, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.secondary.opacity(0.07)))
+                    }
+
+                    Text("Engines come from the free, open-source Wine, Game Porting Toolkit, DXVK and MetalSharp builds on GitHub; Visual C++, DirectX and .NET come from Microsoft. You can keep using your Mac while it installs.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 460)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 28)
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+
+            VStack(spacing: 10) {
+                if model.setupRunning {
+                    TaskProgressBar(value: runtimes.progress)
+                        .frame(maxWidth: 360)
+                    Text(runtimes.task ?? model.status ?? "Working…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let error = model.setupError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button {
+                    model.runSetup()
+                } label: {
+                    Text(buttonTitle).frame(minWidth: 220)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(model.setupRunning)
+            }
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+        }
+        .modifier(ErrorAlert())
+        .task { measured = await model.downloadEstimates() }
+    }
+
+    private var buttonTitle: String {
+        if model.setupRunning { return "Installing…" }
+        if model.setupError != nil { return "Try Again" }
+        _ = selectionVersion
+        guard let measured else { return "Install" }
+        let bytes = AppModel.plannedBytes(measured: measured)
+        return "Install (about \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)))"
+    }
+
+    @ViewBuilder
+    private func stateIcon(_ state: StepState) -> some View {
+        switch state {
+        case .pending:
+            Image(systemName: "circle").foregroundStyle(.tertiary)
+        case .running:
+            ProgressView().controlSize(.small)
+        case .done:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+        case .skipped:
+            Image(systemName: "minus.circle.fill").foregroundStyle(.orange)
+        case .off:
+            Image(systemName: "minus.circle").foregroundStyle(.tertiary).help("Not selected")
+        }
+    }
+}
+
+struct ComponentChecklist: View {
+    var onChange: () -> Void = {}
+    var showsStatus = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(showsStatus ? [ComponentTier.required, .recommended, .optional, .beta] : [.required, .recommended, .optional],
+                    id: \.self) { tier in
+                let components = Component.allCases.filter { $0.tier == tier && ($0 != .mach9 || Platform.mach9Available) }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(tier.label)
+                        .font(.headline)
+                    if tier == .beta {
+                        Text("Experimental downloads, not part of setup. Each is installed only when you click its button, and used only where you turn it on.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(components) { component in
+                        ComponentRow(component: component, onChange: onChange, showsStatus: showsStatus)
+                        if component != components.last { Divider() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ComponentInstallStatus: View {
+    @EnvironmentObject var model: AppModel
+    let component: Component
+
+    var body: some View {
+        let status = model.componentStatus[component]
+        VStack(alignment: .trailing, spacing: 4) {
+            if model.installingComponent == component {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Installing…").font(.caption).foregroundStyle(.secondary)
+                }
+            } else if status?.installed == true {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.green)
+            } else {
+                Button("Install Now") { model.installComponentNow(component) }
+                    .controlSize(.small)
+                    .disabled(model.installingComponent != nil || model.setupRunning || model.updating || !model.setupComplete)
+                if let missing = status?.missingFrom, !missing.isEmpty {
+                    Text("Missing from \(missing.map(\.engineName).joined(separator: ", "))")
+                        .font(.caption2).foregroundStyle(.orange)
+                        .multilineTextAlignment(.trailing)
+                } else {
+                    Text("Not installed").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(minWidth: 110, alignment: .trailing)
+    }
+}
+
+struct ComponentRow: View {
+    let component: Component
+    let onChange: () -> Void
+    let showsStatus: Bool
+    @AppStorage private var isOn: Bool
+
+    init(component: Component, onChange: @escaping () -> Void, showsStatus: Bool = false) {
+        self.component = component
+        self.onChange = onChange
+        self.showsStatus = showsStatus
+        _isOn = AppStorage(wrappedValue: component.tier == .recommended, component.defaultsKey)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if component.tier == .required {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                    .help("Required")
+            } else if component.tier == .beta {
+                Image(systemName: "flask")
+                    .foregroundStyle(.orange)
+                    .frame(width: 16)
+                    .help("Optional beta download")
+            } else {
+                Toggle("", isOn: $isOn)
+                    .toggleStyle(.themedCheckbox)
+                    .labelsHidden()
+                    .onChange(of: isOn) { _, _ in onChange() }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(component.title).font(.callout.weight(.medium))
+                    TierBadge(tier: component.tier)
+                }
+                Text(component.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if component.tier == .required {
+                    Text("Can't be turned off: Ferry needs this to run Windows games and programs.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !isOn, let without = component.withoutIt {
+                    Text(without)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            if showsStatus && component.tier != .required { ComponentInstallStatus(component: component) }
+        }
+    }
+}
+
+struct TierBadge: View {
+    let tier: ComponentTier
+
+    var body: some View {
+        let tint: AnyShapeStyle = {
+            switch tier {
+            case .required: return AnyShapeStyle(Color.secondary)
+            case .recommended: return AnyShapeStyle(.tint)
+            case .optional: return AnyShapeStyle(Color.gray)
+            case .beta: return AnyShapeStyle(Color.orange)
+            }
+        }()
+        Text(tier.badge)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(tint.opacity(0.16)))
+            .foregroundStyle(tint)
+    }
+}
+
+struct ComponentSettings: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ComponentChecklist(showsStatus: true)
+                Divider()
+                Text("Install Now adds one component without running setup again. Windows libraries go into Ferry's ready-made environments, so new games get them; for games already in Ferry, use Reinstall Windows Libraries in their settings. The ticks decide what Run Setup Again installs; unticking something doesn't remove what's already installed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Run Setup Again") { model.runSetup() }
+                    .disabled(model.setupRunning || model.updating || model.installingComponent != nil)
+            }
+            .padding(20)
+        }
+        .onAppear { model.refreshComponentStatus() }
+        .onChange(of: model.updating) { _, _ in model.refreshComponentStatus() }
+        .onChange(of: model.setupRunning) { _, _ in model.refreshComponentStatus() }
+    }
+}
+
+struct TaskProgressBar: View {
+    let value: Double?
+
+    var body: some View {
+        if let value {
+            ProgressView(value: value)
+        } else {
+            ProgressView().progressViewStyle(.linear)
+        }
+    }
+}
+
+struct DropZone: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+    let targeted: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        ZStack {
+            shape.fill(targeted ? AnyShapeStyle(.tint.opacity(0.14)) : AnyShapeStyle(Color.secondary.opacity(0.06)))
+            shape.strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.secondary.opacity(0.45)))
+            VStack(spacing: 10) {
+                if let message = runtimes.task ?? model.status {
+                    TaskProgressBar(value: runtimes.progress)
+                        .frame(maxWidth: 300)
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Image(systemName: "arrow.down.app")
+                        .font(.system(size: 42, weight: .light))
+                        .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.secondary))
+                        .accessibilityHidden(true)
+                    Text("Drop a Windows game or app here")
+                        .font(.title3.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(".exe, .msi or .bat to add it, or a folder or .zip/.rar/.7z to check it first")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(20)
+        }
+        .frame(minHeight: 190)
+        .fixedSize(horizontal: false, vertical: true)
+        .contentShape(shape)
+        .onTapGesture { if runtimes.task == nil { model.chooseFile() } }
+    }
+}
+
+struct FrameLimitPicker: View {
+    @EnvironmentObject var model: AppModel
+    @Binding var game: Game
+
+    private var supported: Bool {
+        let engine = model.resolvedEngine(game)
+        return engine == .dxvk || (engine == .mach9 && game.settings.mach9Direct3D != "wined3d")
+            || (game.settings.dxvkD3D9 && engine != .mach9)
+    }
+
+    var body: some View {
+        if supported {
+            Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
+                Text("Off").tag(0)
+                ForEach([30, 40, 45, 60, 90, 120], id: \.self) { Text("\($0) FPS").tag($0) }
+            }
+            .help("Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery. Use the game's own limiter if it has one.")
+        } else {
+            LabeledContent("Frame rate limit") {
+                Text("Use the game's own setting (\(model.resolvedEngine(game).short) has no limiter)")
+                    .foregroundStyle(.secondary)
+            }
+            .help("This engine has no frame rate limiter of its own. Use the game's setting instead.")
+        }
+    }
+}
+
+struct TroubleshootTarget: Identifiable { let id: UUID }
+
+struct GameIconView: View {
+    @EnvironmentObject var model: AppModel
+    let game: Game
+    let side: CGFloat
+
+    var body: some View {
+        if let image = model.icon(for: game) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: side * 0.24, style: .continuous))
+        } else {
+            Image(systemName: "gamecontroller.fill")
+                .font(side > 40 ? .title : .title3)
+                .foregroundStyle(.tint)
+                .frame(width: side, height: side)
+                .background(RoundedRectangle(cornerRadius: side * 0.24, style: .continuous).fill(.tint.opacity(0.14)))
+        }
+    }
+}
+
+struct GameRow: View {
+    @EnvironmentObject var model: AppModel
+    let game: Game
+    let openSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GameIconView(game: game, side: 38)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(game.name).font(.headline).lineLimit(1)
+                Text(model.subtitle(for: game)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .help(game.name)
+            .accessibilityElement(children: .combine)
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            Spacer()
+            if model.preparing.contains(game.id) {
+                ProgressView().controlSize(.small)
+                    .accessibilityLabel("Starting \(game.name)")
+            } else if model.running.contains(game.id) {
+                Button { model.stop(game.id) } label: { Label("Stop", systemImage: "stop.fill") }
+                    .accessibilityLabel("Stop \(game.name)")
+            } else {
+                Button { model.play(game.id) } label: { Label("Play", systemImage: "play.fill") }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Play \(game.name)")
+            }
+            Button(action: openSettings) {
+                Image(systemName: "slider.horizontal.3")
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help("Settings for \(game.name)")
+            .accessibilityLabel("Settings for \(game.name)")
+        }
+        .padding(.vertical, 4)
+        .contextMenu {
+            if model.running.contains(game.id) {
+                Button("Stop") { model.stop(game.id) }
+            } else {
+                Button("Play") { model.play(game.id) }
+            }
+            Button("Settings…", action: openSettings)
+            Divider()
+            Button("Open C: Drive") { model.openDriveC(game.id) }
+            Button("Show Game Files in Finder") { model.showGameInFinder(game.id) }
+            Button("Make Mac Shortcut") { model.makeShortcut(game.id) }
+            Button("Show Game Log") { model.showLog(game.id, "game") }
+            Button("Troubleshoot…") { model.troubleshootGame = game.id }
+            Button("Mods…") { model.modsGame = game.id }
+            Divider()
+            Button("Add Program to This Environment…") { model.addProgram(toEnvironmentOf: game.id) }
+        }
+    }
+}
+
+struct GameSettingsView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let gameID: UUID
+    @State private var draft: Game? = nil
+    @State private var programs: [Analyzer.ProgramCandidate] = []
+    @State private var confirmRemove = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let game = Binding($draft) {
+                Form {
+                    Section("Game") {
+                        TextField("Name", text: game.name)
+                        LabeledContent("Icon") {
+                            HStack(spacing: 10) {
+                                GameIconView(game: game.wrappedValue, side: 32)
+                                Picker("Icon", selection: game.iconMode) {
+                                    ForEach(IconMode.allCases) { Text($0.title).tag($0) }
+                                }
+                                .help("Where the game's icon comes from, in the library and in Mac shortcuts.")
+                                .labelsHidden()
+                                .fixedSize()
+                                Button("Choose Image…") {
+                                    if model.chooseCustomIcon(for: gameID) { game.wrappedValue.iconMode = .custom }
+                                }
+                            }
+                        }
+                        .onChange(of: game.wrappedValue.iconMode) { _, mode in
+                            if mode == .auto { model.refreshAutoIcon(game.wrappedValue) }
+                        }
+                        LabeledContent("File") {
+                            Text(game.wrappedValue.exePath)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                        }
+                        LabeledContent("Detected") {
+                            Text("\(game.wrappedValue.graphics.label), \(game.wrappedValue.arch.label)")
+                        }
+                        Menu("Change Executable") {
+                            let others = programs.filter { $0.url.path != game.wrappedValue.exePath }
+                            ForEach(others.prefix(12), id: \.url) { program in
+                                Button("\(program.label) — \(program.url.lastPathComponent)") {
+                                    let current = game.wrappedValue
+                                    Task { draft = await model.retarget(current, to: program.url) }
+                                }
+                            }
+                            if !others.isEmpty { Divider() }
+                            if let partner = model.partnerProgram(of: game.wrappedValue, among: programs) {
+                                Button("Add \(partner.role.label ?? "It") as Its Own Entry") {
+                                    model.addPartnerProgram(PairOffer(gameID: gameID, gameName: game.wrappedValue.name,
+                                                                      program: partner.url, role: partner.role))
+                                }
+                                Divider()
+                            }
+                            Button("Choose Another File…") {
+                                let current = game.wrappedValue
+                                Task { if let changed = await model.pickExecutable(for: current) { draft = changed } }
+                            }
+                        }
+                        .help("The program Ferry starts. Lists the other programs in the game's folder, best guess first: single-player before multiplayer and launchers, servers and tools last.")
+                        .task(id: game.wrappedValue.exePath) {
+                            let exe = URL(fileURLWithPath: game.wrappedValue.exePath)
+                            guard !ModLayout.looksLikeInstaller(exe) else { programs = []; return }
+                            let folder = model.programFolder(for: exe)
+                            programs = await Task.detached { Analyzer.rankedPrograms(in: folder) }.value
+                        }
+                    }
+
+                    Section {
+                        Picker("Graphics engine", selection: game.settings.engine) {
+                            ForEach(EngineID.allCases.filter { $0.runtime.availableHere || $0 == .auto || $0 == game.wrappedValue.settings.engine }) {
+                                Text($0 == .auto ? "Automatic (\(model.recommendedEngine(game.wrappedValue).short))" : $0.title).tag($0)
+                            }
+                        }
+                        .help("Which translator runs this game. Automatic picks the best one for its graphics and architecture; the compatibility check shows why.")
+                        if game.wrappedValue.settings.engine != .auto && game.wrappedValue.sharedWith == nil
+                            && model.recommendedEngine(game.wrappedValue) != game.wrappedValue.settings.engine {
+                            LabeledContent("Recommended: \(model.recommendedEngine(game.wrappedValue).short)") {
+                                Button("Use Auto") { game.wrappedValue.settings.engine = .auto }
+                            }
+                        }
+                        Toggle(model.resolvedEngine(game.wrappedValue) == .mach9 ? "MetalFX upscaling" : "DLSS via MetalFX", isOn: game.settings.metalFX)
+                            .help(model.resolvedEngine(game.wrappedValue) == .mach9
+                                  ? "Renders at 75% resolution and upscales with MetalFX for a higher frame rate."
+                                  : "When DLSS is selected in the game's graphics options, D3DMetal upscales with Apple's MetalFX instead.")
+                        if game.wrappedValue.sharedWith == nil {
+                            Toggle("Retina resolution", isOn: game.settings.retina)
+                                .help("Renders at the display's full pixel resolution. Sharper, but slower.")
+                            if model.resolvedEngine(game.wrappedValue) == .d3dmetal {
+                                Picker("macOS Game Mode", selection: game.settings.gameMode) {
+                                    Text(game.wrappedValue.usesGameMode && game.wrappedValue.settings.gameMode == 0 ? "Automatic (on: it's a game)"
+                                         : game.wrappedValue.settings.gameMode == 0 ? "Automatic (off: it's an app)" : "Automatic").tag(0)
+                                    Text("On").tag(1)
+                                    Text("Off").tag(2)
+                                }
+                                .help("Game Mode gives a game more of the processor and graphics and lowers controller and AirPods latency. Automatic turns it on for programs where Ferry found game graphics or a game engine, and off for apps.")
+                            }
+                            Picker("Interface size", selection: game.settings.uiScale) {
+                                Text("Automatic").tag(0)
+                                Text("Normal (100%)").tag(100)
+                                Text("Large (200%)").tag(200)
+                            }
+                            .help("Windows' scaling for menus, text and buttons. Automatic uses 200% with Retina for apps (so they're sharp at their usual size) and 100% for games, which handle their own resolution.")
+                        }
+                        Toggle("Performance HUD", isOn: game.settings.metalHUD)
+                            .help("Shows the frame rate and GPU statistics (Metal HUD) over the game.")
+                        FrameLimitPicker(game: game)
+                        if model.resolvedEngine(game.wrappedValue) == .d3dmetal {
+                            Toggle("Report graphics card as NVIDIA", isOn: game.settings.reportNVIDIA)
+                                .help("D3DMetal tells games the Mac has an AMD card. Some games take AMD-only paths or workarounds that break on a Mac; this makes them see an NVIDIA GeForce RTX 3060 instead.")
+                            let nvidia = game.wrappedValue.settings.reportNVIDIA
+                            Toggle(isOn: game.settings.hideROV) {
+                                Text("Hide ROV support").foregroundStyle(nvidia ? .primary : .tertiary)
+                            }
+                                .disabled(!nvidia)
+                                .padding(.leading, 18)
+                                .help("Fixes some DirectX 12 games that show a black screen on D3DMetal. Tells the game the graphics card has no rasterizer-ordered views, so it uses its ordinary drawing path. Needs Report graphics card as NVIDIA: some games use ROV on an AMD card whatever they're told.")
+                            if game.wrappedValue.rovSeen && !game.wrappedValue.settings.hideROV {
+                                Text("Ferry saw this game draw with ROV, which D3DMetal can show as black. Hide ROV support is recommended.")
+                                    .font(.caption).foregroundStyle(.orange)
+                            }
+                        }
+                        if model.usesSDKXAudio2(game.wrappedValue) {
+                            Toggle("Microsoft XAudio2", isOn: game.settings.nativeXAudio2)
+                                .help("This game plays sound with an older XAudio2 from the DirectX SDK. Wine's own version can hold back or drop sounds such as dialogue, so Ferry loads Microsoft's copy instead. Turn off if the game's sound breaks.")
+                        }
+                        Toggle(isOn: game.settings.webView2) {
+                            Text("WebView2 for launchers").foregroundStyle(model.webView2Installed ? .primary : .tertiary)
+                            if !model.webView2Installed { Text("Install WebView2 in Settings ▸ Components first.") }
+                        }
+                            .disabled(!model.webView2Installed)
+                            .help("For launchers whose window or login page is blank. Lets them show built-in web pages with Microsoft's WebView2, installed once in Settings ▸ Components and shared between games. It doesn't work for every launcher under Wine.")
+                        Toggle("Native full-screen button", isOn: game.settings.macFullScreenButton)
+                            .help("Enables the green window button for windowed games, opening them in a macOS full-screen space.")
+                        if model.resolvedEngine(game.wrappedValue) == .mullion {
+                            let intelBuild = model.runtimes.info[.x64] != nil
+                            Picker("CPU translation", selection: game.settings.mullionRosetta) {
+                                Text("FEX").tag(false)
+                                Text("Rosetta 2").tag(true)
+                            }
+                            .disabled(!intelBuild && !game.wrappedValue.settings.mullionRosetta)
+                            .help("How the game's Intel code runs on Apple silicon. FEX works without Rosetta, so it keeps working once macOS drops Rosetta. Rosetta 2 is usually faster, and uses MetalSharp's Intel build of the same Wine (it comes with D3DMetal 4 in Settings ▸ Components) in a Windows environment of its own. Without Rosetta or that build, Mullion uses FEX.")
+                            if !intelBuild {
+                                Text("Rosetta 2 needs D3DMetal 4 (beta) from Settings ▸ Components, which includes MetalSharp's Intel build.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else if game.wrappedValue.settings.mullionRosetta && !model.runtimes.rosetta {
+                                Text("Rosetta 2 isn't available on this Mac, so Mullion uses FEX.")
+                                    .font(.caption).foregroundStyle(.orange)
+                            }
+                            Picker("MetalSharp renderer", selection: game.settings.metalSharpBackend) {
+                                Text("Automatic (Mullion)").tag("")
+                                Text(game.wrappedValue.arch == .x86 ? "DXVK (64-bit games only)" : "DXVK").tag("dxvk")
+                                Text("WineD3D").tag("wine")
+                                Text("VKD3D-Proton (DirectX 12)").tag("vkd3d")
+                            }
+                            .help("How Mullion draws DirectX. Automatic uses Mullion for DirectX 10–12 and WineD3D for DirectX 9 and older. DXVK goes through Vulkan (64-bit games only), WineD3D uses Wine's own DirectX for every version, and VKD3D-Proton is for DirectX 12 games that draw incorrectly on Mullion.")
+                            Picker("OpenGL implementation", selection: game.settings.metalSharpOpenGL) {
+                                Text("WineMetalGL (default)").tag("")
+                                Text("Apple's OpenGL").tag("wine")
+                            }
+                            .help("Which OpenGL draws OpenGL games, and DirectX 9 and older through WineD3D. WineMetalGL supports OpenGL 4.6 on Metal; Apple's OpenGL stops at 4.1 but is long-tested. Try Apple's if a game draws incorrectly.")
+                            let hasKosmicKrisp = model.runtimes.kosmicKrispDriver() != nil
+                            Picker(selection: game.settings.mullionVulkan) {
+                                Text("MoltenVK (default)").tag("")
+                                Text("KosmicKrisp (from Mach9)").tag("kosmickrisp")
+                            } label: {
+                                Text("Vulkan driver").foregroundStyle(hasKosmicKrisp ? .primary : .tertiary)
+                                if !hasKosmicKrisp { Text("Install Mach9 in Settings ▸ Components first.") }
+                            }
+                                .disabled(!hasKosmicKrisp)
+                                .help("What Vulkan games, and the DXVK and VKD3D-Proton renderers, draw through. KosmicKrisp runs all of Vulkan 1.4 on Metal; MoltenVK is the long-tested default. Try the other one if a game crashes or draws wrong.")
+                        }
+                        if model.resolvedEngine(game.wrappedValue) == .mach9 {
+                            Picker("Mach9 renderer", selection: game.settings.mach9Direct3D) {
+                                Text("Metal: mtld3d, DXMT (default)").tag("")
+                                Text("WineD3D").tag("wined3d")
+                            }
+                            .help("How Mach9 draws DirectX. Metal uses mtld3d for DirectX 9 and DXMT for DirectX 10 and 11, straight to Metal. WineD3D uses Wine's own DirectX through OpenGL: slower, but worth trying if a game draws incorrectly.")
+                            if game.wrappedValue.arch == .x86 {
+                                Toggle("Large address aware (4 GB)", isOn: game.settings.fullMemory32)
+                                    .help("Gives this 32-bit game 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the game won't start.")
+                            }
+                        }
+                        if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) && model.resolvedEngine(game.wrappedValue) != .mach9 {
+                            Toggle("DirectX 9 via DXVK", isOn: game.settings.dxvkD3D9)
+                                .help("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit games use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
+                            if game.wrappedValue.settings.dxvkD3D9 {
+                                if model.resolvedEngine(game.wrappedValue) == .mullion && game.wrappedValue.arch == .x86 {
+                                    let ready = model.betaDXVK32() != nil && model.runtimes.kosmicKrispDriver() != nil
+                                    Toggle(isOn: game.settings.dxvkBeta) {
+                                        Text("DXVK 3 on KosmicKrisp (beta)")
+                                        if !ready {
+                                            Text(model.betaDXVK32() == nil
+                                                 ? "Optional beta download: install it in Settings ▸ Components ▸ Optional beta downloads."
+                                                 : "Needs Mach9 installed, for its KosmicKrisp driver.")
+                                        }
+                                    }
+                                    .disabled(!ready)
+                                    .help("Uses the newest official DXVK (\(model.betaDXVKVersion ?? "3.x")) through KosmicKrisp instead of DXVK 1.10.3 from 2023 through MoltenVK. Experimental: turn it off if the game draws incorrectly or won't start.")
+                                }
+                                Picker("Video memory (DXVK)", selection: game.settings.dxvkVideoMemory) {
+                                    Text(Platform.memoryGB <= 8 ? "Automatic (1 GB on this Mac)" : "Automatic (DXVK's own)").tag(0)
+                                    Text("512 MB").tag(512)
+                                    Text("1 GB").tag(1024)
+                                    Text("2 GB").tag(2048)
+                                    Text("4 GB").tag(4096)
+                                    Text("DXVK's own").tag(-1)
+                                }
+                                .help("How much video memory the game is told it has. On Macs with 8 GB or less, games told they have lots keep every texture loaded until macOS runs out of memory, which makes them stutter or play in slow motion. Raise it if a game hides graphics options or won't start.")
+                            }
+                        }
+                        if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) {
+                            Picker("Faster screen copies", selection: game.settings.drawCopies) {
+                                Text(model.drawsCopies(game.wrappedValue) ? "Automatic (on)" : "Automatic (off)").tag(Bool?.none)
+                                Text("On").tag(Bool?.some(true))
+                                Text("Off").tag(Bool?.some(false))
+                            }
+                            .help("Performs DirectX 9 copies into the frame being drawn as draws, which Apple GPUs handle several times faster. Games with screen effects such as panoramas, blur or glow can make hundreds of these copies per frame. On automatically for DirectX 9 games. Turn it off if a game draws incorrectly or won't start.")
+                        }
+                        if game.wrappedValue.arch == .x86 {
+                            Toggle("DirectDraw compatibility (cnc-ddraw)", isOn: game.settings.cncDdraw)
+                                .help("Fixes slow, flickering or broken DirectDraw games from the 1990s and 2000s.")
+                        }
+                        if [EngineID.wined3d, .dxvk].contains(model.resolvedEngine(game.wrappedValue))
+                            || (model.resolvedEngine(game.wrappedValue) == .mach9 && game.wrappedValue.settings.mach9Direct3D == "wined3d") {
+                            Picker("WineD3D renderer", selection: game.settings.wined3dVulkan) {
+                                Text("OpenGL (default)").tag(false)
+                                Text("Vulkan").tag(true)
+                            }
+                            .help("What WineD3D draws DirectX 9 and older with. OpenGL is the most tested on the Mac. Vulkan goes through MoltenVK and can crash some games.")
+                            Toggle("Single-threaded rendering", isOn: game.settings.wined3dSingleThread)
+                                .help("Turns off WineD3D's command-stream threading (CSMT). Fixes parts of models lagging a frame behind; slightly slower.")
+                            if game.wrappedValue.sharedWith == nil {
+                                Toggle("OpenGL backing store", isOn: game.settings.openGLBackingStore)
+                                    .help("Fixes game windows that freeze, stay blank or flicker.")
+                            }
+                        }
+                    } header: {
+                        Text("Graphics")
+                    } footer: {
+                        Text("Using \(model.resolvedEngine(game.wrappedValue).short). Each engine keeps its own Windows environment; saves are shared between them. Hover over a setting for details.")
+                    }
+
+                    Section("Compatibility") {
+                        if game.wrappedValue.sharedWith == nil {
+                            Picker("Windows version", selection: game.settings.windowsVersion) {
+                                Text("Windows 11").tag("win11")
+                                Text("Windows 10").tag("win10")
+                                Text("Windows 8.1").tag("win81")
+                                Text("Windows 7").tag("win7")
+                                Text("Windows XP").tag("winxp64")
+                            }
+                            .help("The Windows version the game sees. Some older games refuse to start, or behave differently, on newer versions.")
+                        } else {
+                            LabeledContent("Windows version, Retina and keyboard") {
+                                Text("Set by \(model.environmentOwner(of: game.wrappedValue).name)")
+                            }
+                        }
+                        if game.wrappedValue.sharedWith == nil {
+                            Toggle("⌘ Command as Ctrl", isOn: game.settings.commandIsCtrl)
+                                .help("Command works as Ctrl in the game, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
+                            Toggle("⌥ Option as Alt", isOn: game.settings.optionIsAlt)
+                                .help("Option works as Alt in the game, for shortcuts such as Alt+Enter.")
+                            Toggle("Exclusive full-screen mode", isOn: game.settings.captureFullscreen)
+                                .help("Lets the game change the display's resolution. When off, full screen is virtual: the game is scaled to fit the display.")
+                            if game.wrappedValue.settings.captureFullscreen && game.wrappedValue.graphics == .unknown {
+                                Text("Meant for games. In an app like this one, a maximized window can trap the mouse and stop resizing, so it's best left off.")
+                                    .font(.caption).foregroundStyle(.orange)
+                            }
+                        }
+                        Toggle("Fast synchronization (MSync)", isOn: game.settings.fastSync)
+                            .help("Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible.")
+                        Toggle("Advertise AVX (Rosetta)", isOn: game.settings.advertiseAVX)
+                            .help("Reports AVX support to games that require it. Applies to engines that run through Rosetta.")
+                        Toggle("Show on Discord", isOn: game.settings.showOnDiscord)
+                            .help("Shows this game on your Discord profile while it runs.")
+                        ArgsEditor(text: game.settings.arguments)
+                            .id("args-\(gameID)")
+                        EnvEditor(text: game.settings.extraEnv)
+                            .id(gameID)
+                    }
+
+                    Section("Windows Tools") {
+                        HStack {
+                            Button("Open C: Drive") { model.openDriveC(gameID) }
+                            Button("Wine Configuration") { model.runTool(gameID, ["winecfg"]) }
+                            Button("Controllers") { model.runTool(gameID, ["control", "joy.cpl"]) }
+                        }
+                        HStack {
+                            Button("Reinstall Windows Libraries") { model.reinstallLibraries(gameID) }
+                                .help("Visual C++, DirectX, .NET, XNA and OpenAL")
+                            Button("Add Program to This Environment…") { model.addProgram(toEnvironmentOf: gameID) }
+                                .help("Add a game this launcher installed, so it can start straight from Ferry")
+                        }
+                        HStack {
+                            Button("Make Mac Shortcut") { model.makeShortcut(gameID) }
+                            Button("Show Game Log") { model.showLog(gameID, "game") }
+                            Button("Troubleshoot…") {
+                                if let draft { model.update(draft) }
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.troubleshootGame = gameID }
+                            }
+                            Button("Show Setup Log") { model.showLog(gameID, "setup") }
+                        }
+                    }
+
+                    Section {
+                        HStack {
+                            Button("Back Up Saves") { model.backupSaves(gameID) }
+                            Button("Open Saves Folder") { model.openSavesFolder(gameID) }
+                            Button("Clear Shader Cache") { model.clearShaderCache(gameID) }
+                        }
+                    } header: {
+                        Text("Saves and Caches")
+                    } footer: {
+                        Text("Saves in AppData and Saved Games are shared by every engine, so switching engines never hides them. Backups go to Documents ▸ Ferry Backups. Games that save next to their own files keep those saves in the game's folder. Clear the shader cache if a game flickers or glitches after an update; it stutters briefly while the cache rebuilds.")
+                    }
+
+                    Section {
+                        Button("Remove from Ferry…", role: .destructive) { confirmRemove = true }
+                    }
+                }
+                .formStyle(.grouped)
+            }
+
+            HStack {
+                if model.preparing.contains(gameID), let status = model.status {
+                    ProgressView().controlSize(.small)
+                    Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    if let draft { model.update(draft) }
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(minWidth: 560, idealWidth: 620, minHeight: 560, idealHeight: 720)
+        .onAppear { draft = model.game(gameID) }
+        .confirmationDialog("Remove \(draft?.name ?? "this game") from Ferry?", isPresented: $confirmRemove) {
+            if draft?.sharedWith != nil {
+                Button("Remove") {
+                    model.remove(gameID, deleteWindowsFiles: false)
+                    dismiss()
+                }
+            } else {
+                Button("Remove but Keep Its Environment") {
+                    model.remove(gameID, deleteWindowsFiles: false)
+                    dismiss()
+                }
+                Button("Remove and Delete Its Environment and Saves", role: .destructive) {
+                    model.remove(gameID, deleteWindowsFiles: true)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(removeMessage)
+        }
+    }
+
+    private var removeMessage: String {
+        guard let g = draft else { return "" }
+        if g.sharedWith != nil {
+            return "Only the Ferry entry goes away. \(model.environmentOwner(of: g).name)'s Windows environment, and the game inside it, stay."
+        }
+        let sharing = model.sharers(of: g.id).count
+        var text = "The game's own files on your Mac are never touched."
+        if sharing > 0 {
+            text += " The \(sharing) program\(sharing == 1 ? "" : "s") added to its environment will be removed from Ferry too."
+        }
+        return text
+    }
+}
+
+struct SettingsView: View {
+    var body: some View {
+        TabView {
+            EngineSettings().tabItem { Label("Engines", systemImage: "cpu") }
+            ComponentSettings().tabItem { Label("Components", systemImage: "shippingbox") }
+            DefaultSettings().tabItem { Label("Defaults", systemImage: "slider.horizontal.3") }
+            SystemSettings().tabItem { Label("System", systemImage: "lock.shield") }
+            StorageView(showsDone: false).tabItem { Label("Storage", systemImage: "internaldrive") }
+        }
+        .frame(minWidth: 620, idealWidth: 660, minHeight: 560, idealHeight: 640)
+    }
+}
+
+struct EngineSettings: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+    @State private var error: String? = nil
+    @AppStorage("autoUpdateCheck") private var autoUpdateCheck = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(updateStatus).font(.callout)
+                            Text(lastCheckedText).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if runtimes.checkingForUpdates {
+                            ProgressView().controlSize(.small)
+                        }
+                        Button("Check for Updates") { model.checkForUpdatesNow() }
+                            .disabled(runtimes.checkingForUpdates || busy)
+                        if !runtimes.availableUpdates.isEmpty {
+                            Button("Update All") { model.installUpdates() }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(busy)
+                        }
+                    }
+                    Toggle("Check for updates daily", isOn: $autoUpdateCheck)
+                        .help("Checks for new versions of Ferry's engines and components once a day and tells you when updates are available.")
+                } header: {
+                    Text("Updates")
+                }
+
+                ForEach([RuntimeKind.gptk, .x64, .staging, .dxvk, .arm64, .mach9].filter { $0.availableHere && ($0 != .x64 || runtimes.info[.x64] != nil) }) { kind in
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(kind.title).font(.headline)
+                                Spacer()
+                                if runtimes.updateAvailable(kind) {
+                                    Text("\(runtimes.info[kind]?.version ?? "") → \(runtimes.latest[kind] ?? "") available")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tint)
+                                } else {
+                                    Text(versionText(kind)).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Text(kind.blurb).font(.caption).foregroundStyle(.secondary)
+                            if kind == .gptk, runtimes.info[.x64] != nil {
+                                Label("D3DMetal games run on D3DMetal 4 (beta) below. Remove that to use this one again.", systemImage: "arrow.down.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(.tint)
+                            }
+                            HStack {
+                                if runtimes.updateAvailable(kind) {
+                                    Button(actionTitle(kind)) { perform { try await model.updateEngine(kind) } }
+                                        .buttonStyle(.borderedProminent)
+                                } else {
+                                    Button(actionTitle(kind)) { perform { try await model.updateEngine(kind) } }
+                                }
+                                if runtimes.info[kind] != nil {
+                                    Button("Remove", role: .destructive) { model.removeEngine(kind) }
+                                }
+                                if kind == .gptk && runtimes.info[.x64] == nil {
+                                    Button("Import Newer D3DMetal…") { importD3DMetal() }
+                                        .help("Use the D3DMetal from Apple's \"Evaluation environment for Windows games\" .dmg")
+                                    if runtimes.hasD3DMetalBackup {
+                                        Button("Restore Bundled Version") { runtimes.restoreBundledD3DMetal() }
+                                    }
+                                }
+                            }
+                            .disabled(busy)
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            if let task = runtimes.task ?? model.status {
+                HStack {
+                    TaskProgressBar(value: runtimes.progress).frame(width: 160)
+                    Text(task).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 12)
+            }
+        }
+        .alert("Couldn't finish", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(error ?? "")
+        }
+    }
+
+    private var busy: Bool { runtimes.task != nil || model.setupRunning || model.updating }
+
+    private var updateStatus: String {
+        let count = runtimes.availableUpdates.count
+        if count == 0 { return "Everything is up to date" }
+        return count == 1 ? "1 update available" : "\(count) updates available"
+    }
+
+    private var lastCheckedText: String {
+        guard let date = runtimes.lastUpdateCheck else { return "Not checked yet" }
+        let formatter = RelativeDateTimeFormatter()
+        return "Last checked \(formatter.localizedString(for: date, relativeTo: Date()))"
+    }
+
+    private func actionTitle(_ kind: RuntimeKind) -> String {
+        if runtimes.info[kind] == nil { return "Install" }
+        return runtimes.updateAvailable(kind) ? "Update" : "Reinstall"
+    }
+
+    private func versionText(_ kind: RuntimeKind) -> String {
+        guard let info = runtimes.info[kind] else { return "Not installed — downloads automatically when a game needs it" }
+        if let imported = info.d3dmetalImported { return "\(info.version) · D3DMetal \(imported)" }
+        if kind == .x64, let d3dmetal = runtimes.x64D3DMetalVersion { return "\(info.version) · D3DMetal \(d3dmetal) · Wine 11 · In use" }
+        if kind == .gptk, runtimes.info[.x64] != nil { return "\(info.version) · Not in use" }
+        return info.version
+    }
+
+    private func perform(_ work: @escaping () async throws -> Void) {
+        Task {
+            do { try await work() } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    private func importD3DMetal() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "dmg") ?? .diskImage]
+        panel.message = "Choose Apple's Game Porting Toolkit .dmg (Evaluation environment for Windows games)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        perform { try await runtimes.importD3DMetal(from: url) }
+    }
+}
+
+struct DefaultSettings: View {
+    @AppStorage("autoRuntimes") private var autoRuntimes = true
+    @AppStorage("defaultFastSync") private var fastSync = true
+    @AppStorage("defaultAVX") private var avx = true
+    @AppStorage("defaultRetina") private var retina = false
+    @AppStorage("defaultMetalFX") private var metalFX = false
+    @AppStorage("defaultCommandIsCtrl") private var commandIsCtrl = false
+    @AppStorage("discordPresence") private var discordPresence = true
+    @AppStorage("discordFallbackID") private var discordFallbackID = ""
+    @AppStorage("discordShowFerry") private var discordShowFerry = true
+    @AppStorage(UnpackDestination.defaultsKey) private var unpackDestination = UnpackDestination.games.rawValue
+    @AppStorage(UnpackDestination.customFolderKey) private var unpackCustomFolder = ""
+    @AppStorage("deleteArchiveAfterAdd") private var deleteArchiveAfterAdd = false
+    @AppStorage(GameWiki.defaultsKey) private var onlineLookup = true
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Form {
+            Section("Appearance") {
+                ThemeColorSetting()
+            }
+            Section {
+                Picker("Unpack games to", selection: $unpackDestination) {
+                    ForEach(UnpackDestination.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .help("Where games that come as .zip, .rar or .7z archives are unpacked.")
+                if unpackDestination == UnpackDestination.custom.rawValue {
+                    LabeledContent("Folder") {
+                        HStack {
+                            Text(unpackCustomFolder.isEmpty ? "None chosen yet" : (unpackCustomFolder as NSString).abbreviatingWithTildeInPath)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(.secondary)
+                            Button("Choose…") { chooseUnpackFolder() }
+                        }
+                    }
+                }
+                Toggle("Permanently delete archives after adding their games", isOn: $deleteArchiveAfterAdd)
+                    .help("Deletes an archive for good, not to the Trash, once its game is unpacked and safely in place.")
+            } header: {
+                Text("Games from Archives")
+            } footer: {
+                Text("Games that come as .zip, .rar or .7z (including multi-part archives like .part1.rar or .7z.001) are unpacked straight into this folder, so adding them is instant. Ferry checks there's enough free space first. \"Next to the archive\" keeps the game on the same drive as the archive, e.g. a big external drive. With the delete option on, the archive is deleted for good (not moved to the Trash) only once its game is safely in place.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section {
+                Toggle("Look up games online when needed", isOn: $onlineLookup)
+                    .help("Looks a game up on PCGamingWiki when its files don't show which graphics it uses. Only the game's name is sent.")
+            } header: {
+                Text("Compatibility Check")
+            } footer: {
+                Text("When Ferry can't tell from a program's files which graphics it uses (DirectX 9, 11, Vulkan…), it looks the game up on PCGamingWiki, a community database of PC games, and checks it for anti-cheat. Only the game's name is sent, each game is looked up once, and Ferry ignores a page unless its title matches the game.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section {
+                Toggle("Show the current game on Discord", isOn: $discordPresence)
+                    .help("Sets your Discord status to the game you're playing, through the Discord app on this Mac.")
+                TextField("Ferry's Discord Application ID (optional)", text: $discordFallbackID,
+                          prompt: Text("For example, 1234567890123456789"))
+                    .disabled(!discordPresence)
+                Toggle("Show \"Playing Ferry\" while Ferry is open", isOn: $discordShowFerry)
+                    .help("Shows Ferry itself on Discord while it's open. Needs a Ferry application ID.")
+                    .disabled(!discordPresence || discordFallbackID.isEmpty)
+                Button("Save Ferry's Icon for Discord…") { model.saveIconForDiscord() }
+            } header: {
+                Text("Discord")
+            } footer: {
+                Text("While a game runs, Ferry sets your Discord status through the Discord app on this Mac. Games Discord recognizes, like Call of Duty: Black Ops II, show with their real name and icon, plus \"Playing through Ferry on Mac\". With a Ferry application ID, games Discord doesn't know (most fan games) show as \"Playing Ferry\" with the game's name, and Ferry itself shows while it's open. Setup: create an application named \"Ferry\" at discord.com/developers/applications and paste its Application ID here. Then click Save Ferry's Icon, upload it as the App Icon (General Information) and as an art asset named exactly \"ferry\" (Rich Presence ▸ Art Assets). Each game's settings can hide it from Discord.")
+            }
+            Section {
+                Toggle("Install Windows libraries for games outside the ready-made environments", isOn: $autoRuntimes)
+                    .help("Installs Visual C++, DirectX, .NET and other libraries the first time a game runs, if it didn't get a copy of a ready-made environment.")
+            } footer: {
+                Text("New games normally get a copy of the ready-made environment, which already has Visual C++, DirectX, .NET, XNA and OpenAL. If that copy isn't available, Ferry installs the libraries the first time the game runs.")
+            }
+            Section {
+                Toggle("Fast synchronization (MSync)", isOn: $fastSync)
+                    .help("Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible.")
+                Toggle("Advertise AVX (Rosetta)", isOn: $avx)
+                    .help("Reports AVX support to games that require it. Applies to engines that run through Rosetta.")
+                Toggle("Retina resolution", isOn: $retina)
+                    .help("Renders at the display's full pixel resolution. Sharper, but slower.")
+                Toggle("DLSS → MetalFX upscaling", isOn: $metalFX)
+                    .help("Lets games that offer NVIDIA DLSS use Apple's MetalFX upscaling instead (D3DMetal), and upscales with MetalFX on Mach9.")
+                Toggle("⌘ Command as Ctrl", isOn: $commandIsCtrl)
+                    .help("Command works as Ctrl in games, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
+            } header: {
+                Text("Defaults for New Games")
+            } footer: {
+                Text("Each game can change these in its own settings.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func chooseUnpackFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use This Folder"
+        panel.message = "Choose where games from archives are unpacked"
+        if panel.runModal() == .OK, let url = panel.url { unpackCustomFolder = url.path }
+    }
+}
+
+struct SystemSettings: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var runtimes: RuntimeManager
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Rosetta 2") {
+                    if runtimes.rosetta {
+                        Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("Install Rosetta") { Task { await runtimes.installRosetta() } }
+                            .disabled(runtimes.task != nil)
+                    }
+                }
+                LabeledContent("GStreamer (video cutscenes)") {
+                    if runtimes.gstreamerInstalled {
+                        Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("Install GStreamer") {
+                            Task {
+                                do { try await runtimes.installGStreamer() } catch { model.errorMessage = error.localizedDescription }
+                            }
+                        }
+                        .disabled(runtimes.task != nil)
+                    }
+                }
+                LabeledContent("7-Zip (faster unpacking)") {
+                    if runtimes.sevenZipInstalled {
+                        Label(runtimes.sevenZipVersion.map { "Installed (\($0))" } ?? "Installed", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Button("Install 7-Zip") {
+                            Task {
+                                do { try await runtimes.installSevenZip() } catch { model.errorMessage = error.localizedDescription }
+                            }
+                        }
+                        .disabled(runtimes.task != nil)
+                    }
+                }
+            } footer: {
+                Text("7-Zip unpacks games that come as archives, including multi-part ones; without it Ferry uses macOS's built-in unpacker for single archives. Windows games and programs are Intel code; Rosetta 2 translates it for Apple silicon (MetalSharp Wine uses FEX instead and doesn't need it). GStreamer plays video in Wine Staging games and programs; the other engines include their own.")
+            }
+
+            Section {
+                Button("Open Full Disk Access Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            } header: {
+                Text("Folder Access")
+            } footer: {
+                Text("Games run straight from the folder you dropped them from, and Windows sees your whole Mac as drive Z:. macOS asks once the first time a game reads Downloads, Documents, Desktop or an external drive. To skip those prompts, add Ferry to Full Disk Access.")
+            }
+
+            Section {
+                Button("Run Setup Again") { model.runSetup() }
+                    .disabled(model.setupRunning)
+            } header: {
+                Text("Repair")
+            } footer: {
+                Text("Reinstalls anything missing and rebuilds the ready-made Windows environments. Your games, settings and saves are kept.")
+            }
+
+            Section("Ferry's Files") {
+                Button("Show Ferry Data Folder") { NSWorkspace.shared.open(Paths.root) }
+                Button("Show Mac Shortcuts Folder") {
+                    try? FileManager.default.createDirectory(at: Paths.shortcuts, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(Paths.shortcuts)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct ArgsEditor: View {
+    @Binding var text: String
+    @State private var rows: [Row] = []
+
+    struct Row: Identifiable, Equatable {
+        let id = UUID()
+        var value = ""
+    }
+
+    var body: some View {
+        LabeledContent("Launch arguments") {
+            VStack(alignment: .trailing, spacing: 6) {
+                ForEach($rows) { $row in
+                    HStack(spacing: 4) {
+                        TextField("For example, -windowed", text: $row.value)
+                        Button { rows.removeAll { $0.id == row.id } } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove this argument")
+                    }
+                    .font(.system(.body, design: .monospaced))
+                    .labelsHidden()
+                }
+                Button { rows.append(Row()) } label: {
+                    Label("Add Argument", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .help("Extra options passed to the game when it starts, such as -windowed or -skipintro. Which ones work depends on the game.")
+        .onAppear { rows = ArgsText.options(text).map { Row(value: $0) } }
+        .onChange(of: rows) {
+            text = rows.map { $0.value.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        }
+    }
+}
+
+struct EnvEditor: View {
+    @Binding var text: String
+    @State private var rows: [Row] = []
+
+    struct Row: Identifiable, Equatable {
+        let id = UUID()
+        var key = ""
+        var value = ""
+    }
+
+    var body: some View {
+        LabeledContent("Environment variables") {
+            VStack(alignment: .trailing, spacing: 6) {
+                ForEach(rows) { row in
+                    HStack(spacing: 4) {
+                        TextField("VARIABLE_NAME", text: field(row.id, \.key))
+                            .frame(minWidth: 200, maxWidth: .infinity)
+                        Text("=").foregroundStyle(.secondary)
+                        TextField("Value", text: field(row.id, \.value))
+                            .frame(width: 80)
+                        Button { rows.removeAll { $0.id == row.id }; commit() } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove this variable")
+                    }
+                    .font(.system(.body, design: .monospaced))
+                    .labelsHidden()
+                }
+                Button { rows.append(Row()) } label: {
+                    Label("Add Variable", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .help("Settings passed to Wine and its graphics layers when the game starts, written as NAME = value. For troubleshooting; most games need none.")
+        .onAppear { load(text) }
+    }
+
+    private func field(_ id: Row.ID, _ part: WritableKeyPath<Row, String>) -> Binding<String> {
+        Binding(
+            get: { rows.first { $0.id == id }?[keyPath: part] ?? "" },
+            set: { value in
+                guard let i = rows.firstIndex(where: { $0.id == id }) else { return }
+                rows[i][keyPath: part] = value
+                commit()
+            })
+    }
+
+    private func commit() {
+        text = EnvText.text(rows.map { ($0.key, $0.value) })
+        if rows.contains(where: { $0.key.contains("=") }) { load(text) }
+    }
+
+    private func load(_ s: String) {
+        rows = EnvText.pairs(s).map { Row(key: $0.key, value: $0.value) }
+    }
+}

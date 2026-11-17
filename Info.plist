@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Ferry</string>
+	<key>CFBundleDisplayName</key>
+	<string>Ferry</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.ferry.Ferry</string>
+	<key>CFBundleExecutable</key>
+	<string>Ferry</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.ferry.launch</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ferry</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Windows Program</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>exe</string>
+				<string>msi</string>
+				<string>bat</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.microsoft.windows-executable</string>
+				<string>com.microsoft.msi-installer</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Windows games and programs you run from Downloads read their files from there.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Windows games and programs you run from Documents read and save their files there.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Windows games and programs you run from the Desktop read their files from there.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Windows games and programs installed on an external drive are read from that drive.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Windows programs you run in Ferry can use your microphone for voice chat and recording.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Windows programs you run in Ferry can use your camera for video calls and streaming.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Windows games and programs stored on a network drive are read from that drive.</string>
+</dict>
+</plist>
