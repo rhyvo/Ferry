@@ -10,6 +10,8 @@
   <a href="#how-ferry-picks-an-engine">How it works</a>
   &nbsp;·&nbsp;
   <a href="#faq">FAQ</a>
+  &nbsp;·&nbsp;
+  <a href="https://ko-fi.com/rhyvo">☕ Support Ferry</a>
 </p>
 
 <p align="center">
@@ -96,6 +98,16 @@ cd Ferry
 ```
 
 `build.sh` compiles Ferry and copies it to `/Applications`. Use `./build.sh --no-install` to only build it into `./build`, or `./make-release.sh` to make a `.dmg`.
+
+## Support Ferry
+
+Ferry is free and always will be. If it got one of your games running, you can help keep it going with a tip on Ko-fi. Tips go toward testing more games, adding new engines as they come out, and an Apple Developer membership so Ferry opens without the "Open Anyway" step.
+
+<p align="center">
+  <a href="https://ko-fi.com/rhyvo"><img src="https://img.shields.io/badge/Ko--fi-Support%20Ferry-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support Ferry on Ko-fi"></a>
+</p>
+
+You can also open this page from Ferry's menu: **Ferry ▸ Support Ferry…**. Starring the repository and telling friends helps too.
 
 ## Credits
 

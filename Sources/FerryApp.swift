@@ -51,6 +51,7 @@ struct FerryCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") { model.checkForUpdatesNow() }
+            Button("Support Ferry…") { NSWorkspace.shared.open(URL(string: "https://ko-fi.com/rhyvo")!) }
         }
         CommandGroup(after: .newItem) {
             Button("Check Compatibility…") { openWindow(id: "analyzer") }
