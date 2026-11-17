@@ -764,7 +764,7 @@ final class AppModel: ObservableObject {
     }
 
     func usesBundledDXVK(_ g: Game, engine: EngineID) -> Bool {
-        guard engine == .mullion, g.settings.dxvkD3D9, g.arch != .x86, runtimes.kosmicKrispDriver() != nil,
+        guard engine == .mullion, !mullionOnRosetta(g), g.settings.dxvkD3D9, g.arch != .x86, runtimes.kosmicKrispDriver() != nil,
               let bin = runtimes.binDir(.arm64) else { return false }
         return fm.exists(bin.deletingLastPathComponent().appendingPathComponent("lib/dxvk/x86_64-windows/d3d9.dll"))
     }

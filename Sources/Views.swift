@@ -942,11 +942,14 @@ struct GameSettingsView: View {
                                 .help("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit games use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
                             if game.wrappedValue.settings.dxvkD3D9 {
                                 if model.resolvedEngine(game.wrappedValue) == .mullion && game.wrappedValue.arch == .x86 {
-                                    let ready = model.betaDXVK32() != nil && model.runtimes.kosmicKrispDriver() != nil
+                                    let onRosetta = game.wrappedValue.settings.mullionRosetta && model.runtimes.info[.x64] != nil && model.runtimes.rosetta
+                                    let ready = model.betaDXVK32() != nil && model.runtimes.kosmicKrispDriver() != nil && !onRosetta
                                     Toggle(isOn: game.settings.dxvkBeta) {
                                         Text("DXVK 3 on KosmicKrisp (beta)")
                                         if !ready {
-                                            Text(model.betaDXVK32() == nil
+                                            Text(onRosetta
+                                                 ? "Only with CPU translation set to FEX: KosmicKrisp doesn't run through Rosetta 2. DXVK 1.10.3 is used instead."
+                                                 : model.betaDXVK32() == nil
                                                  ? "Optional beta download: install it in Settings ▸ Components ▸ Optional beta downloads."
                                                  : "Needs Mach9 installed, for its KosmicKrisp driver.")
                                         }

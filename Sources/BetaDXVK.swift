@@ -13,7 +13,7 @@ extension AppModel {
     }
 
     func usesBetaDXVK(_ g: Game, engine: EngineID) -> Bool {
-        engine == .mullion && g.settings.dxvkD3D9 && g.settings.dxvkBeta && g.arch == .x86
+        engine == .mullion && !mullionOnRosetta(g) && g.settings.dxvkD3D9 && g.settings.dxvkBeta && g.arch == .x86
             && betaDXVK32() != nil && runtimes.kosmicKrispDriver() != nil
     }
 
