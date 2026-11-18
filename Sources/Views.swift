@@ -251,7 +251,7 @@ struct LibraryUpdateBanner: View {
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text("New Windows libraries").font(.callout.weight(.semibold))
-                Text("Includes a Visual C++ fix for D3DMetal games, plus .NET 6 and 8, PhysX and video codecs. New games get them automatically after installing; for games already in Ferry, use Reinstall Windows Libraries in their settings.")
+                Text("Includes a Visual C++ fix for D3DMetal games, plus .NET 6 and 8, PhysX and video codecs. New games and apps get them automatically after installing; for ones already in Ferry, use Reinstall Windows Libraries in their settings.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -571,7 +571,7 @@ struct ComponentSettings: View {
             VStack(alignment: .leading, spacing: 16) {
                 ComponentChecklist(showsStatus: true)
                 Divider()
-                Text("Install Now adds one component without running setup again. Windows libraries go into Ferry's ready-made environments, so new games get them; for games already in Ferry, use Reinstall Windows Libraries in their settings. The ticks decide what Run Setup Again installs; unticking something doesn't remove what's already installed.")
+                Text("Install Now adds one component without running setup again. Windows libraries go into Ferry's ready-made environments, so new games and apps get them; for ones already in Ferry, use Reinstall Windows Libraries in their settings. The ticks decide what Run Setup Again installs; unticking something doesn't remove what's already installed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -649,28 +649,26 @@ struct FrameLimitPicker: View {
 
     var body: some View {
         let vsync = game.settings.vsync
-        Group {
-            if model.hasFrameLimiter(game) {
-                Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
-                    Text("Off").tag(0)
-                    ForEach([30, 40, 45, 60, 90, 120], id: \.self) { Text("\($0) FPS").tag($0) }
-                }
-                .help(vsync
-                      ? "VSync is on, so the frame rate follows the display. Turn VSync off to pick a limit."
-                      : "Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery. Use the \(game.noun)'s own limiter if it has one.")
-            } else {
-                LabeledContent("Frame rate limit") {
-                    Text("Use the \(game.noun)'s own setting (\(model.resolvedEngine(game).short) has no limiter)")
-                        .foregroundStyle(.secondary)
-                }
-                .help(vsync
-                      ? "VSync is on, so the frame rate follows the display."
-                      : "This engine has no frame rate limiter of its own. Use the \(game.noun)'s setting instead.")
+        let hz = Platform.displayHz
+        let current = game.settings.fpsLimit
+        let limits = [30, 40, 45, 60, 90, 120].filter { !vsync || $0 < hz || $0 == current }
+        if model.hasFrameLimiter(game) {
+            Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
+                Text(vsync ? "Display rate (\(hz) FPS)" : "Off").tag(0)
+                ForEach(limits, id: \.self) { Text("\($0) FPS").tag($0) }
             }
+            .help(vsync
+                  ? "With VSync on, the \(game.noun) runs at the display's rate (\(hz) FPS), or at a lower limit picked here, with every frame still shown on a refresh. A limit a little below what the \(game.noun) can hold keeps frame times even when it can't reach \(hz)."
+                  : "Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery.")
+        } else {
+            LabeledContent("Frame rate limit") {
+                Text("Use the \(game.noun)'s own setting (Ferry can't limit it on \(model.resolvedEngine(game).short))")
+                    .foregroundStyle(.secondary)
+            }
+            .help("Ferry can't limit the frame rate of this \(game.noun)'s graphics on this engine, or the \(game.noun) has anti-cheat. Use the \(game.noun)'s own setting instead.")
         }
-        .disabled(vsync)
         Toggle("VSync", isOn: $game.settings.vsync)
-            .help("Shows each frame in step with the display's refresh, so the picture doesn't tear (a frame showing partway through another), and keeps the \(game.noun) from drawing more frames than the display can show: \(Platform.displayHz) a second on this Mac's display. The time it would spend on frames you never see goes to the \(game.noun) and macOS instead, and the Mac runs cooler. Every engine caps the frame rate; Mullion's DirectX 10–12 can still tear. Turn it off for the highest frame rate and lowest input delay, or to use a frame rate limit.")
+            .help("Shows each frame in step with the display's refresh, so the picture doesn't tear (a frame showing partway through another), and keeps the \(game.noun) from drawing more frames than the display can show: \(hz) a second on this Mac's display. The time it would spend on frames you never see goes to the \(game.noun) and macOS instead, and the Mac runs cooler. Use the frame rate limit with it to cap lower. Mullion's DirectX 10–12 can still tear. Turn it off for the highest frame rate and lowest input delay.")
     }
 }
 
@@ -774,7 +772,7 @@ struct GameSettingsView: View {
                             HStack(spacing: 10) {
                                 GameIconView(game: game.wrappedValue, side: 32)
                                 Picker("Icon", selection: game.iconMode) {
-                                    ForEach(IconMode.allCases) { Text($0.title).tag($0) }
+                                    ForEach(IconMode.allCases) { Text($0.title(game.wrappedValue.noun)).tag($0) }
                                 }
                                 .help("Where its icon comes from, in the library and in Mac shortcuts.")
                                 .labelsHidden()
@@ -842,7 +840,7 @@ struct GameSettingsView: View {
                         Toggle(model.resolvedEngine(game.wrappedValue) == .mach9 ? "MetalFX upscaling" : "DLSS via MetalFX", isOn: game.settings.metalFX)
                             .help(model.resolvedEngine(game.wrappedValue) == .mach9
                                   ? "Renders at 75% resolution and upscales with MetalFX for a higher frame rate."
-                                  : "When DLSS is selected in the game's graphics options, D3DMetal upscales with Apple's MetalFX instead.")
+                                  : "When DLSS is selected in the \(game.wrappedValue.noun)'s graphics options, D3DMetal upscales with Apple's MetalFX instead.")
                         if game.wrappedValue.sharedWith == nil {
                             Toggle("Retina resolution", isOn: game.settings.retina)
                                 .help("Renders at the display's full pixel resolution. Sharper, but slower.")
@@ -874,24 +872,24 @@ struct GameSettingsView: View {
                             }
                                 .disabled(!nvidia)
                                 .padding(.leading, 18)
-                                .help("Fixes some DirectX 12 games that show a black screen on D3DMetal. Tells the game the graphics card has no rasterizer-ordered views, so it uses its ordinary drawing path. Needs Report graphics card as NVIDIA: some games use ROV on an AMD card whatever they're told.")
+                                .help("Fixes some DirectX 12 games that show a black screen on D3DMetal. Tells the \(game.wrappedValue.noun) the graphics card has no rasterizer-ordered views, so it uses its ordinary drawing path. Needs Report graphics card as NVIDIA: some games use ROV on an AMD card whatever they're told.")
                             if game.wrappedValue.rovSeen && !game.wrappedValue.settings.hideROV {
-                                Text("Ferry saw this game draw with ROV, which D3DMetal can show as black. Hide ROV support is recommended.")
+                                Text("Ferry saw this \(game.wrappedValue.noun) draw with ROV, which D3DMetal can show as black. Hide ROV support is recommended.")
                                     .font(.caption).foregroundStyle(.orange)
                             }
                         }
                         if model.usesSDKXAudio2(game.wrappedValue) {
                             Toggle("Microsoft XAudio2", isOn: game.settings.nativeXAudio2)
-                                .help("This game plays sound with an older XAudio2 from the DirectX SDK. Wine's own version can hold back or drop sounds such as dialogue, so Ferry loads Microsoft's copy instead. Turn off if the game's sound breaks.")
+                                .help("This \(game.wrappedValue.noun) plays sound with an older XAudio2 from the DirectX SDK. Wine's own version can hold back or drop sounds such as dialogue, so Ferry loads Microsoft's copy instead. Turn off if the game's sound breaks.")
                         }
                         Toggle(isOn: game.settings.webView2) {
                             Text("WebView2 for launchers").foregroundStyle(model.webView2Installed ? .primary : .tertiary)
                             if !model.webView2Installed { Text("Install WebView2 in Settings ▸ Components first.") }
                         }
                             .disabled(!model.webView2Installed)
-                            .help("For launchers whose window or login page is blank. Lets them show built-in web pages with Microsoft's WebView2, installed once in Settings ▸ Components and shared between games. It doesn't work for every launcher under Wine.")
+                            .help("For launchers whose window or login page is blank. Lets them show built-in web pages with Microsoft's WebView2, installed once in Settings ▸ Components and shared between games and apps. It doesn't work for every launcher under Wine.")
                         Toggle("Native full-screen button", isOn: game.settings.macFullScreenButton)
-                            .help("Enables the green window button for windowed games, opening them in a macOS full-screen space.")
+                            .help("Enables the green window button for a windowed \(game.wrappedValue.noun), opening it in a macOS full-screen space.")
                         if model.resolvedEngine(game.wrappedValue) == .mullion {
                             let intelBuild = model.runtimes.info[.x64] != nil
                             Picker("CPU translation", selection: game.settings.mullionRosetta) {
@@ -899,7 +897,7 @@ struct GameSettingsView: View {
                                 Text("Rosetta 2").tag(true)
                             }
                             .disabled(!intelBuild && !game.wrappedValue.settings.mullionRosetta)
-                            .help("How the game's Intel code runs on Apple silicon. FEX works without Rosetta, so it keeps working once macOS drops Rosetta. Rosetta 2 is usually faster, and uses MetalSharp's Intel build of the same Wine (it comes with D3DMetal 4 in Settings ▸ Components) in a Windows environment of its own. Without Rosetta or that build, Mullion uses FEX.")
+                            .help("How the \(game.wrappedValue.noun)'s Intel code runs on Apple silicon. FEX works without Rosetta, so it keeps working once macOS drops Rosetta. Rosetta 2 is usually faster, and uses MetalSharp's Intel build of the same Wine (it comes with D3DMetal 4 in Settings ▸ Components) in a Windows environment of its own. Without Rosetta or that build, Mullion uses FEX.")
                             if !intelBuild {
                                 Text("Rosetta 2 needs D3DMetal 4 (beta) from Settings ▸ Components, which includes MetalSharp's Intel build.")
                                     .font(.caption).foregroundStyle(.secondary)
@@ -909,16 +907,16 @@ struct GameSettingsView: View {
                             }
                             Picker("MetalSharp renderer", selection: game.settings.metalSharpBackend) {
                                 Text("Automatic (Mullion)").tag("")
-                                Text(game.wrappedValue.arch == .x86 ? "DXVK (64-bit games only)" : "DXVK").tag("dxvk")
+                                Text(game.wrappedValue.arch == .x86 ? "DXVK (64-bit only)" : "DXVK").tag("dxvk")
                                 Text("WineD3D").tag("wine")
                                 Text("VKD3D-Proton (DirectX 12)").tag("vkd3d")
                             }
-                            .help("How Mullion draws DirectX. Automatic uses Mullion for DirectX 10–12 and WineD3D for DirectX 9 and older. DXVK goes through Vulkan (64-bit games only), WineD3D uses Wine's own DirectX for every version, and VKD3D-Proton is for DirectX 12 games that draw incorrectly on Mullion.")
+                            .help("How Mullion draws DirectX. Automatic uses Mullion for DirectX 10–12 and WineD3D for DirectX 9 and older. DXVK goes through Vulkan (64-bit only), WineD3D uses Wine's own DirectX for every version, and VKD3D-Proton is for DirectX 12 games that draw incorrectly on Mullion.")
                             Picker("OpenGL implementation", selection: game.settings.metalSharpOpenGL) {
                                 Text("WineMetalGL (default)").tag("")
                                 Text("Apple's OpenGL").tag("wine")
                             }
-                            .help("Which OpenGL draws OpenGL games, and DirectX 9 and older through WineD3D. WineMetalGL supports OpenGL 4.6 on Metal; Apple's OpenGL stops at 4.1 but is long-tested. Try Apple's if a game draws incorrectly.")
+                            .help("Which OpenGL draws OpenGL games, and DirectX 9 and older through WineD3D. WineMetalGL supports OpenGL 4.6 on Metal; Apple's OpenGL stops at 4.1 but is long-tested. Try Apple's if the \(game.wrappedValue.noun) draws incorrectly.")
                             let hasKosmicKrisp = model.runtimes.kosmicKrispDriver() != nil
                             let vulkanOnRosetta = game.wrappedValue.settings.mullionRosetta && model.runtimes.info[.x64] != nil && model.runtimes.rosetta
                             Picker(selection: Binding(
@@ -935,22 +933,22 @@ struct GameSettingsView: View {
                                 }
                             }
                                 .disabled(!hasKosmicKrisp || vulkanOnRosetta)
-                                .help("What Vulkan games, and the DXVK and VKD3D-Proton renderers, draw through. KosmicKrisp runs all of Vulkan 1.4 on Metal; MoltenVK is the long-tested default. Try the other one if a game crashes or draws wrong.")
+                                .help("What Vulkan games, and the DXVK and VKD3D-Proton renderers, draw through. KosmicKrisp runs all of Vulkan 1.4 on Metal; MoltenVK is the long-tested default. Try the other one if the \(game.wrappedValue.noun) crashes or draws wrong.")
                         }
                         if model.resolvedEngine(game.wrappedValue) == .mach9 {
                             Picker("Mach9 renderer", selection: game.settings.mach9Direct3D) {
                                 Text("Metal: mtld3d, DXMT (default)").tag("")
                                 Text("WineD3D").tag("wined3d")
                             }
-                            .help("How Mach9 draws DirectX. Metal uses mtld3d for DirectX 9 and DXMT for DirectX 10 and 11, straight to Metal. WineD3D uses Wine's own DirectX through OpenGL: slower, but worth trying if a game draws incorrectly.")
+                            .help("How Mach9 draws DirectX. Metal uses mtld3d for DirectX 9 and DXMT for DirectX 10 and 11, straight to Metal. WineD3D uses Wine's own DirectX through OpenGL: slower, but worth trying if the \(game.wrappedValue.noun) draws incorrectly.")
                             if game.wrappedValue.arch == .x86 {
                                 Toggle("Large address aware (4 GB)", isOn: game.settings.fullMemory32)
-                                    .help("Gives this 32-bit game 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the game won't start.")
+                                    .help("Gives this 32-bit \(game.wrappedValue.noun) 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the \(game.wrappedValue.noun) won't start.")
                             }
                         }
                         if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) && model.resolvedEngine(game.wrappedValue) != .mach9 {
                             Toggle("DirectX 9 via DXVK", isOn: game.settings.dxvkD3D9)
-                                .help("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit games use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
+                                .help("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit programs use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
                             if game.wrappedValue.settings.dxvkD3D9 {
                                 if model.resolvedEngine(game.wrappedValue) == .mullion && game.wrappedValue.arch == .x86 {
                                     let onRosetta = game.wrappedValue.settings.mullionRosetta && model.runtimes.info[.x64] != nil && model.runtimes.rosetta
@@ -968,7 +966,7 @@ struct GameSettingsView: View {
                                         }
                                     }
                                     .disabled(!ready)
-                                    .help("Uses the newest official DXVK (\(model.betaDXVKVersion ?? "3.x")) through KosmicKrisp instead of DXVK 1.10.3 from 2023 through MoltenVK. Experimental: turn it off if the game draws incorrectly or won't start.")
+                                    .help("Uses the newest official DXVK (\(model.betaDXVKVersion ?? "3.x")) through KosmicKrisp instead of DXVK 1.10.3 from 2023 through MoltenVK. Experimental: turn it off if the \(game.wrappedValue.noun) draws incorrectly or won't start.")
                                 }
                                 Picker("Video memory (DXVK)", selection: game.settings.dxvkVideoMemory) {
                                     Text(Platform.memoryGB <= 8 ? "Automatic (1 GB on this Mac)" : "Automatic (DXVK's own)").tag(0)
@@ -978,7 +976,7 @@ struct GameSettingsView: View {
                                     Text("4 GB").tag(4096)
                                     Text("DXVK's own").tag(-1)
                                 }
-                                .help("How much video memory the game is told it has. On Macs with 8 GB or less, games told they have lots keep every texture loaded until macOS runs out of memory, which makes them stutter or play in slow motion. Raise it if a game hides graphics options or won't start.")
+                                .help("How much video memory the \(game.wrappedValue.noun) is told it has. On Macs with 8 GB or less, games told they have lots keep every texture loaded until macOS runs out of memory, which makes them stutter or play in slow motion. Raise it if a game hides graphics options or won't start.")
                             }
                         }
                         if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) {
@@ -1004,7 +1002,7 @@ struct GameSettingsView: View {
                                 .help("Turns off WineD3D's command-stream threading (CSMT). Fixes parts of models lagging a frame behind; slightly slower.")
                             if game.wrappedValue.sharedWith == nil {
                                 Toggle("OpenGL backing store", isOn: game.settings.openGLBackingStore)
-                                    .help("Fixes game windows that freeze, stay blank or flicker.")
+                                    .help("Fixes windows that freeze, stay blank or flicker.")
                             }
                         }
                     } header: {
@@ -1043,7 +1041,7 @@ struct GameSettingsView: View {
                         Toggle("Fast synchronization (MSync)", isOn: game.settings.fastSync)
                             .help("Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible.")
                         Toggle("Advertise AVX (Rosetta)", isOn: game.settings.advertiseAVX)
-                            .help("Reports AVX support to games that require it. Applies to engines that run through Rosetta.")
+                            .help("Reports AVX support to programs that require it. Applies to engines that run through Rosetta.")
                         Toggle("Show on Discord", isOn: game.settings.showOnDiscord)
                             .help("Shows this \(game.wrappedValue.noun) on your Discord profile while it runs.")
                         ArgsEditor(text: game.settings.arguments)
@@ -1062,7 +1060,7 @@ struct GameSettingsView: View {
                             Button("Reinstall Windows Libraries") { model.reinstallLibraries(gameID) }
                                 .help("Visual C++, DirectX, .NET, XNA and OpenAL")
                             Button("Add Program to This Environment…") { model.addProgram(toEnvironmentOf: gameID) }
-                                .help("Add a game this launcher installed, so it can start straight from Ferry")
+                                .help("Add a game or app this launcher installed, so it can start straight from Ferry")
                         }
                         HStack {
                             Button("Make Mac Shortcut") { model.makeShortcut(gameID) }
@@ -1085,7 +1083,7 @@ struct GameSettingsView: View {
                     } header: {
                         Text("Saves and Caches")
                     } footer: {
-                        Text("Saves in AppData and Saved Games are shared by every engine, so switching engines never hides them. Backups go to Documents ▸ Ferry Backups. Games that save next to their own files keep those saves in the game's folder. Clear the shader cache if a game flickers or glitches after an update; it stutters briefly while the cache rebuilds.")
+                        Text("Saves in AppData and Saved Games are shared by every engine, so switching engines never hides them. Backups go to Documents ▸ Ferry Backups. Programs that save next to their own files keep those saves in the game's folder. Clear the shader cache if a game flickers or glitches after an update; it stutters briefly while the cache rebuilds.")
                     }
 
                     Section {
@@ -1277,7 +1275,7 @@ struct EngineSettings: View {
     }
 
     private func versionText(_ kind: RuntimeKind) -> String {
-        guard let info = runtimes.info[kind] else { return "Not installed — downloads automatically when a game needs it" }
+        guard let info = runtimes.info[kind] else { return "Not installed — downloads automatically when a game or app needs it" }
         if let imported = info.d3dmetalImported { return "\(info.version) · D3DMetal \(imported)" }
         if kind == .x64, let d3dmetal = runtimes.x64D3DMetalVersion { return "\(info.version) · D3DMetal \(d3dmetal) · Wine 11 · In use" }
         if kind == .gptk, runtimes.info[.x64] != nil { return "\(info.version) · Not in use" }
@@ -1322,10 +1320,10 @@ struct DefaultSettings: View {
                 ThemeColorSetting()
             }
             Section {
-                Picker("Unpack games to", selection: $unpackDestination) {
+                Picker("Unpack to", selection: $unpackDestination) {
                     ForEach(UnpackDestination.allCases) { Text($0.title).tag($0.rawValue) }
                 }
-                .help("Where games that come as .zip, .rar or .7z archives are unpacked.")
+                .help("Where games and apps that come as .zip, .rar or .7z archives are unpacked.")
                 if unpackDestination == UnpackDestination.custom.rawValue {
                     LabeledContent("Folder") {
                         HStack {
@@ -1337,12 +1335,12 @@ struct DefaultSettings: View {
                         }
                     }
                 }
-                Toggle("Permanently delete archives after adding their games", isOn: $deleteArchiveAfterAdd)
-                    .help("Deletes an archive for good, not to the Trash, once its game is unpacked and safely in place.")
+                Toggle("Permanently delete archives after adding what's in them", isOn: $deleteArchiveAfterAdd)
+                    .help("Deletes an archive for good, not to the Trash, once what's in it is unpacked and safely in place.")
             } header: {
-                Text("Games from Archives")
+                Text("Games and Apps from Archives")
             } footer: {
-                Text("Games that come as .zip, .rar or .7z (including multi-part archives like .part1.rar or .7z.001) are unpacked straight into this folder, so adding them is instant. Ferry checks there's enough free space first. \"Next to the archive\" keeps the game on the same drive as the archive, e.g. a big external drive. With the delete option on, the archive is deleted for good (not moved to the Trash) only once its game is safely in place.")
+                Text("Games and apps that come as .zip, .rar or .7z (including multi-part archives like .part1.rar or .7z.001) are unpacked straight into this folder, so adding them is instant. Ferry checks there's enough free space first. \"Next to the archive\" keeps the game on the same drive as the archive, e.g. a big external drive. With the delete option on, the archive is deleted for good (not moved to the Trash) only once its game is safely in place.")
                     .fixedSize(horizontal: false, vertical: true)
             }
             Section {
@@ -1370,16 +1368,16 @@ struct DefaultSettings: View {
                 Text("While a game runs, Ferry sets your Discord status through the Discord app on this Mac. Games Discord recognizes, like Call of Duty: Black Ops II, show with their real name and icon, plus \"Playing through Ferry on Mac\". With a Ferry application ID, games Discord doesn't know (most fan games) show as \"Playing Ferry\" with the game's name, and Ferry itself shows while it's open. Setup: create an application named \"Ferry\" at discord.com/developers/applications and paste its Application ID here. Then click Save Ferry's Icon, upload it as the App Icon (General Information) and as an art asset named exactly \"ferry\" (Rich Presence ▸ Art Assets). Each game's settings can hide it from Discord.")
             }
             Section {
-                Toggle("Install Windows libraries for games outside the ready-made environments", isOn: $autoRuntimes)
-                    .help("Installs Visual C++, DirectX, .NET and other libraries the first time a game runs, if it didn't get a copy of a ready-made environment.")
+                Toggle("Install Windows libraries for games and apps outside the ready-made environments", isOn: $autoRuntimes)
+                    .help("Installs Visual C++, DirectX, .NET and other libraries the first time a game or app runs, if it didn't get a copy of a ready-made environment.")
             } footer: {
-                Text("New games normally get a copy of the ready-made environment, which already has Visual C++, DirectX, .NET, XNA and OpenAL. If that copy isn't available, Ferry installs the libraries the first time the game runs.")
+                Text("New games and apps normally get a copy of the ready-made environment, which already has Visual C++, DirectX, .NET, XNA and OpenAL. If that copy isn't available, Ferry installs the libraries the first time it runs.")
             }
             Section {
                 Toggle("Fast synchronization (MSync)", isOn: $fastSync)
                     .help("Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible.")
                 Toggle("Advertise AVX (Rosetta)", isOn: $avx)
-                    .help("Reports AVX support to games that require it. Applies to engines that run through Rosetta.")
+                    .help("Reports AVX support to programs that require it. Applies to engines that run through Rosetta.")
                 Toggle("Retina resolution", isOn: $retina)
                     .help("Renders at the display's full pixel resolution. Sharper, but slower.")
                 Toggle("DLSS → MetalFX upscaling", isOn: $metalFX)
@@ -1387,11 +1385,11 @@ struct DefaultSettings: View {
                 Toggle("VSync", isOn: $vsync)
                     .help("Shows each frame in step with the display's refresh, so the picture doesn't tear, and keeps games from drawing more frames than the display can show (\(Platform.displayHz) a second on this Mac's display). The time they'd spend on frames you never see goes to the game and macOS instead: cooler, quieter, and longer on battery.")
                 Toggle("⌘ Command as Ctrl", isOn: $commandIsCtrl)
-                    .help("Command works as Ctrl in games, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
+                    .help("Command works as Ctrl in games and apps, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
             } header: {
-                Text("Defaults for New Games")
+                Text("Defaults for New Games and Apps")
             } footer: {
-                Text("Each game can change these in its own settings.")
+                Text("Each game or app can change these in its own settings.")
             }
         }
         .formStyle(.grouped)
@@ -1462,7 +1460,7 @@ struct SystemSettings: View {
             } header: {
                 Text("Folder Access")
             } footer: {
-                Text("Games run straight from the folder you dropped them from, and Windows sees your whole Mac as drive Z:. macOS asks once the first time a game reads Downloads, Documents, Desktop or an external drive. To skip those prompts, add Ferry to Full Disk Access.")
+                Text("Games and apps run straight from the folder you dropped them from, and Windows sees your whole Mac as drive Z:. macOS asks once the first time one reads Downloads, Documents, Desktop or an external drive. To skip those prompts, add Ferry to Full Disk Access.")
             }
 
             Section {

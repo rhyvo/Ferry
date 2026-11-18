@@ -167,11 +167,11 @@ final class AppModel: ObservableObject {
     @discardableResult
     func add(_ url: URL, launch: Bool = true, settings: GameSettings? = nil, name: String? = nil) -> Task<UUID?, Never> {
         guard setupComplete, !setupRunning else {
-            errorMessage = "Finish setting up Ferry first: click Install in the main window. After that you can drop in games."
+            errorMessage = "Finish setting up Ferry first: click Install in the main window. After that you can drop in games and apps."
             return Task { nil }
         }
         guard Self.acceptedExtensions.contains(url.pathExtension.lowercased()) else {
-            errorMessage = "Ferry runs Windows .exe, .msi and .bat files. For a game folder or a .zip, .rar or .7z, use Check Compatibility (⌘K), which finds the program inside."
+            errorMessage = "Ferry runs Windows .exe, .msi and .bat files. For a folder or a .zip, .rar or .7z, use Check Compatibility (⌘K), which finds the program inside."
             return Task { nil }
         }
         if var existing = games.first(where: { $0.exePath == url.path }) {
@@ -344,9 +344,9 @@ final class AppModel: ObservableObject {
         if s.advertiseAVX { env["ROSETTA_ADVERTISE_AVX"] = "1" }
         if s.metalHUD { env["MTL_HUD_ENABLED"] = "1" }
         let cap = frameCap(g)
-        if s.vsync {
-            env["FERRY_VSYNC"] = "1"
-            env["FERRY_VSYNC_HZ"] = "\(Platform.displayHz)"
+        if let cap {
+            env["FERRY_FPS"] = "\(cap)"
+            if s.vsync { env["FERRY_VSYNC"] = "1" }
         }
 
         let ownerID = g.sharedWith ?? g.id
@@ -824,24 +824,31 @@ final class AppModel: ObservableObject {
     }
 
     func usesD3D9Helper(_ g: Game) -> Bool {
-        drawsCopies(g) || (g.settings.vsync && g.graphics == .dx9)
+        drawsCopies(g) || (frameCap(g) != nil && g.graphics == .dx9)
     }
 
     func frameCap(_ g: Game) -> Int? {
-        if g.settings.vsync { return Platform.displayHz }
-        return g.settings.fpsLimit > 0 ? g.settings.fpsLimit : nil
+        let limit = g.settings.fpsLimit > 0 ? g.settings.fpsLimit : nil
+        guard g.settings.vsync else { return limit }
+        return min(limit ?? Int.max, Platform.displayHz)
+    }
+
+    func helpersAllowed(_ g: Game) -> Bool {
+        g.sharedWith == nil && g.exePath.lowercased().hasSuffix(".exe") && !hasAntiCheat(g)
     }
 
     func hasFrameLimiter(_ g: Game) -> Bool {
         let engine = resolvedEngine(g), s = g.settings
         if engine == .dxvk || (s.dxvkD3D9 && engine != .mach9) { return true }
-        if engine == .mach9 { return s.mach9Direct3D != "wined3d" }
-        if engine == .mullion { return [.dx10, .dx11, .dx12].contains(g.graphics) && ["", "dxvk"].contains(s.metalSharpBackend) }
+        if engine == .mach9 && s.mach9Direct3D != "wined3d" { return true }
+        if engine == .mullion && [.dx10, .dx11, .dx12].contains(g.graphics) && ["", "dxvk"].contains(s.metalSharpBackend) { return true }
+        if g.graphics == .dx9 { return true }
+        if [.d3dmetal, .wined3d].contains(engine) && [.dx10, .dx11, .dx12, .unknown].contains(g.graphics) { return helpersAllowed(g) }
         return false
     }
 
     func vsyncHelpers(_ g: Game, engine: EngineID) -> [String] {
-        guard g.settings.vsync, g.sharedWith == nil, g.exePath.lowercased().hasSuffix(".exe"), !hasAntiCheat(g) else { return [] }
+        guard frameCap(g) != nil, helpersAllowed(g) else { return [] }
         switch engine {
         case .d3dmetal: return [.dx10, .dx11, .unknown].contains(g.graphics) ? ["d3d11"] : []
         case .wined3d, .auto: return [.dx10, .dx11, .dx12, .unknown].contains(g.graphics) ? ["dxgi"] : []
@@ -850,9 +857,7 @@ final class AppModel: ObservableObject {
     }
 
     func usesVSyncD3D12(_ g: Game, engine: EngineID) -> Bool {
-        guard engine == .d3dmetal, g.settings.vsync, g.sharedWith == nil, g.exePath.lowercased().hasSuffix(".exe"),
-              [.dx12, .unknown].contains(g.graphics) else { return false }
-        return !hasAntiCheat(g)
+        engine == .d3dmetal && frameCap(g) != nil && [.dx12, .unknown].contains(g.graphics) && helpersAllowed(g)
     }
 
     static func nativeFirst(_ name: String, in overrides: String) -> String {
@@ -972,7 +977,7 @@ final class AppModel: ObservableObject {
     private func launch(_ p: PreparedGame) throws {
         let exe = URL(fileURLWithPath: p.game.exePath)
         guard fm.exists(exe) else {
-            throw FerryError("\(exe.lastPathComponent) isn't where it used to be (\(exe.deletingLastPathComponent().path)). If you moved the game, use Change Executable in its settings.")
+            throw FerryError("\(exe.lastPathComponent) isn't where it used to be (\(exe.deletingLastPathComponent().path)). If you moved the \(p.game.noun), use Change Executable in its settings.")
         }
         var args: [String]
         switch exe.pathExtension.lowercased() {

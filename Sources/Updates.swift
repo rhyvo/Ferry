@@ -54,7 +54,7 @@ extension AppModel {
         if runtimes.availableUpdates.contains(.gptk), runtimes.info[.gptk]?.d3dmetalImported != nil {
             lines.append("\nUpdating Game Porting Toolkit replaces the D3DMetal you imported; import it again afterwards if you still need it.")
         }
-        lines.append("\nYour games, settings and saves are kept.")
+        lines.append("\nYour games, apps, settings and saves are kept.")
         return lines.joined(separator: "\n")
     }
 
@@ -81,7 +81,7 @@ extension AppModel {
     func installUpdates() {
         guard !updating, !setupRunning else { return }
         guard running.isEmpty else {
-            errorMessage = "Quit the games that are running first, then update. Updating Wine underneath a running game can crash it."
+            errorMessage = "Quit the games and apps running in Ferry first, then update. Updating Wine underneath a running program can crash it."
             return
         }
         let kinds = runtimes.availableUpdates
@@ -96,7 +96,7 @@ extension AppModel {
                     try await buildTemplate(kind)
                 }
                 refreshSetupState()
-                noticeMessage = "Updated \(kinds.map(\.title).joined(separator: ", ")). Games pick up the new version the next time they start."
+                noticeMessage = "Updated \(kinds.map(\.title).joined(separator: ", ")). Games and apps pick up the new version the next time they start."
             } catch {
                 errorMessage = "The update didn't finish: \(error.localizedDescription)"
             }

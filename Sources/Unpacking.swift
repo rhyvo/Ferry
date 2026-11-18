@@ -164,11 +164,11 @@ enum Unpacker {
         }
         if line(containing: "wrong password") != nil || line(containing: "enter password") != nil
             || line(containing: "encrypted") != nil {
-            return ("\(name) is password-protected, and Ferry can't unpack those yet. Unpack it with an app that asks for the password (e.g. The Unarchiver), then drop the game's folder here.", false)
+            return ("\(name) is password-protected, and Ferry can't unpack those yet. Unpack it with an app that asks for the password (e.g. The Unarchiver), then drop the unpacked folder here.", false)
         }
         if line(containing: "no space left") != nil || line(containing: "not enough space") != nil
             || line(containing: "disk full") != nil {
-            return ("The disk ran out of space while unpacking \(name). Free up space, or choose a bigger drive in Settings ▸ Defaults ▸ Games from archives.", false)
+            return ("The disk ran out of space while unpacking \(name). Free up space, or choose a bigger drive in Settings ▸ Defaults ▸ Games and Apps from Archives.", false)
         }
         if line(containing: "can not open the file as archive") != nil || line(containing: "cannot open the file as archive") != nil
             || line(containing: "unsupported") != nil {
@@ -247,12 +247,12 @@ enum UnpackDestination: String, CaseIterable, Identifiable {
         case .besideArchive:
             let dir = archive.deletingLastPathComponent()
             if usable(dir) { return (dir, nil) }
-            return (fallback, "The archive's folder can't be written to, so the game went to your Games folder.")
+            return (fallback, "The archive's folder can't be written to, so it was unpacked to your Games folder instead.")
         case .custom:
             if let path = UserDefaults.standard.string(forKey: customFolderKey), !path.isEmpty {
                 let dir = URL(fileURLWithPath: path, isDirectory: true)
                 if usable(dir) { return (dir, nil) }
-                return (fallback, "Your chosen unpack folder isn't available (is its drive plugged in?), so the game went to your Games folder.")
+                return (fallback, "Your chosen unpack folder isn't available (is its drive plugged in?), so it was unpacked to your Games folder instead.")
             }
             return (fallback, nil)
         }

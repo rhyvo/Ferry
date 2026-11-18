@@ -135,7 +135,7 @@ struct TroubleshootView: View {
                 toggleStep(g, title: "Exclusive full-screen mode",
                            detail: g.settings.captureFullscreen
                                ? "It's on for this \(g.noun), which lets it hide the Mac's pointer. If the pointer still shows, try the steps below."
-                               : "Mach9 normally shows full-screen games at a scaled, virtual resolution. In that mode it keeps the mouse in the game but can leave the Mac's pointer on screen. Exclusive full-screen lets the game hide it; the screen switches resolution when the game starts and quits.",
+                               : "Mach9 normally shows full-screen programs at a scaled, virtual resolution. In that mode it keeps the mouse in the \(g.noun) but can leave the Mac's pointer on screen. Exclusive full-screen lets the \(g.noun) hide it; the screen switches resolution when the \(g.noun) starts and quits.",
                            key: "exclusive", isOn: g.settings.captureFullscreen) { $0.settings.captureFullscreen.toggle() }
             }
             if engine != .mach9 || g.settings.captureFullscreen {
@@ -192,7 +192,7 @@ struct TroubleshootView: View {
 
     private func hideROVStep(_ g: Game, first: Bool) -> some View {
         toggleStep(g, title: "Hide ROV support",
-                   detail: "\(g.rovSeen ? "Ferry saw this game draw with ROV. " : "")Some DirectX 12 games use a drawing method called ROV, which D3DMetal says it supports but can show as black. This tells the game it isn't available (and reports an NVIDIA card), so it uses its ordinary method.\(first ? " Fixed a black screen in testing." : "")",
+                   detail: "\(g.rovSeen ? "Ferry saw this \(g.noun) draw with ROV. " : "")Some DirectX 12 games use a drawing method called ROV, which D3DMetal says it supports but can show as black. This tells the game it isn't available (and reports an NVIDIA card), so it uses its ordinary method.\(first ? " Fixed a black screen in testing." : "")",
                    key: "rov", isOn: g.settings.hideROV) { $0.settings.hideROV.toggle() }
     }
 
@@ -231,12 +231,11 @@ struct TroubleshootView: View {
     private func frameLimitStep(_ g: Game, why: String) -> some View {
         let engine = model.resolvedEngine(g)
         if model.hasFrameLimiter(g) {
-            action("Limit the frame rate to 30", detail: why + (g.settings.vsync ? " This turns VSync off." : ""), key: "fps",
-                   label: "Set", alreadyOn: g.settings.fpsLimit == 30 && !g.settings.vsync) {
-                change(g) { $0.settings.fpsLimit = 30; $0.settings.vsync = false }
+            action("Limit the frame rate to 30", detail: why, key: "fps", label: "Set", alreadyOn: g.settings.fpsLimit == 30) {
+                change(g) { $0.settings.fpsLimit = 30 }
             }
         } else {
-            note("Limit the frame rate to 30 in the \(g.noun)'s own graphics settings. \(why) (\(engine.short) has no limiter Ferry can set.)")
+            note("Limit the frame rate to 30 in the \(g.noun)'s own graphics settings. \(why) (Ferry can't limit it on \(engine.short).)")
         }
     }
 

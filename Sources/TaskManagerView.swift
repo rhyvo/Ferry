@@ -128,7 +128,7 @@ struct TaskManagerView: View {
         VStack(spacing: 0) {
             if visible.isEmpty {
                 ContentUnavailableView("No Windows Programs Running", systemImage: "checkmark.circle",
-                                       description: Text("Games, launchers and installers started by Ferry show up here."))
+                                       description: Text("Games, apps, launchers and installers started by Ferry show up here."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 columnHeader

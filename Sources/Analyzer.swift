@@ -221,7 +221,7 @@ enum Analyzer {
         let lowerName = exe.deletingPathExtension().lastPathComponent.lowercased()
         let isInstaller = ModLayout.looksLikeInstaller(exe)
         if isInstaller {
-            findings.append(Finding(level: .info, text: "This is an installer. Run it, then use Change Executable in the game's settings to point Ferry at the installed game inside its C: drive."))
+            findings.append(Finding(level: .info, text: "This is an installer. Run it, then use Change Executable in its settings to point Ferry at the installed program inside its C: drive."))
         }
 
         if info?.is16bit == true {
@@ -326,7 +326,7 @@ enum Analyzer {
                     libraries.append(label)
                     if ![6, 8].contains(major) {
                         missing.insert(label)
-                        findings.append(Finding(level: .warning, text: "Needs the \(label) Desktop Runtime. Ferry installs .NET 6 and 8; for \(label), download the Windows x64 Desktop Runtime installer from Microsoft's .NET site and run it inside this game's Windows environment."))
+                        findings.append(Finding(level: .warning, text: "Needs the \(label) Desktop Runtime. Ferry installs .NET 6 and 8; for \(label), download the Windows x64 Desktop Runtime installer from Microsoft's .NET site and run it inside its Windows environment."))
                     }
                 }
             }
@@ -442,7 +442,7 @@ enum EngineAdvisor {
         }
         switch graphics {
         case .dx12, .dx11, .unknown:
-            return Pick(engine: .d3dmetal, reason: "64-bit \(graphics == .unknown ? "game" : graphics.label + " game"): D3DMetal, Apple's own translator, is the fastest and most compatible for these. \(mach9 ? "Mach9" : "Mullion") is the backup.")
+            return Pick(engine: .d3dmetal, reason: "64-bit \(graphics == .unknown ? "program" : graphics.label + " game"): D3DMetal, Apple's own translator, is the fastest and most compatible for these. \(mach9 ? "Mach9" : "Mullion") is the backup.")
         case .dx10:
             if mach9 {
                 return Pick(engine: .mach9, reason: "DirectX 10: Mach9's DXMT turns it straight into Metal. DXVK is the backup.")
@@ -480,10 +480,10 @@ enum EngineAdvisor {
         case .mach9:
             if !s.fastSync {
                 s.fastSync = true
-                reasons.append("Fast synchronization (MSync) on: Mach9 is built around it, and it cuts the time the game waits on itself.")
+                reasons.append("Fast synchronization (MSync) on: Mach9 is built around it, and it cuts the time the program waits on itself.")
             }
             if arch == .x86 && s.fullMemory32 {
-                reasons.append("4 GB of memory for this 32-bit game instead of 2 GB, like the well-known 4GB patch but without changing the game's files. It prevents out-of-memory crashes on big levels.")
+                reasons.append("4 GB of memory for this 32-bit program instead of 2 GB, like the well-known 4GB patch but without changing its files. It prevents out-of-memory crashes on big levels.")
             }
             if graphics == .dx9 {
                 reasons.append("mtld3d keeps a shader cache next to the game, so the first minutes may hitch once; later launches don't.")

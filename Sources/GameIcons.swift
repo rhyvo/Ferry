@@ -5,9 +5,9 @@ enum IconMode: String, Codable, CaseIterable, Identifiable {
     case auto, custom, standard
     var id: String { rawValue }
 
-    var title: String {
+    func title(_ noun: String) -> String {
         switch self {
-        case .auto: return "From game files"
+        case .auto: return "From \(noun) files"
         case .custom: return "Custom image"
         case .standard: return "Default"
         }

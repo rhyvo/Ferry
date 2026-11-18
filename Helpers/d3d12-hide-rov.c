@@ -300,7 +300,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
             if (!lstrcmpiA(mode, "watch")) hideROV = 0;
             if (!lstrcmpiA(mode, "off")) hideROV = watchROV = 0;
         }
-        vsync = GetEnvironmentVariableA("FERRY_VSYNC", mode, sizeof mode) > 0 && !lstrcmpA(mode, "1");
+        vsync = vsync_read_settings();
         vsync_init();
     }
     return TRUE;

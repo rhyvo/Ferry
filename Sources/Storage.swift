@@ -145,8 +145,8 @@ extension AppModel {
             items.append(StorageItem(
                 url: template, group: "Ferry", title: "Ready-made \(kind.engineName) environment",
                 note: required
-                    ? "Needed by Ferry: new games are set up from it, and other environments copy files from it."
-                    : "New \(kind.engineName) games are copied from it, so they start right away. If deleted, Ferry rebuilds it (a few minutes) the next time a new game needs \(kind.engineName).",
+                    ? "Needed by Ferry: new games and apps are set up from it, and other environments copy files from it."
+                    : "New \(kind.engineName) games and apps are copied from it, so they start right away. If deleted, Ferry rebuilds it (a few minutes) the next time a new one needs \(kind.engineName).",
                 status: required ? .needed : .optional, kind: kind))
         }
 
@@ -189,18 +189,18 @@ extension AppModel {
         for g in games where g.sharedWith == nil {
             if fm.isDirectory(savesURL(g.id)) {
                 items.append(StorageItem(url: savesURL(g.id), group: g.name, title: "Saves",
-                                         note: "The game's saves and settings, kept apart from its environments so switching engines or deleting an environment never loses them.",
+                                         note: "The \(g.noun)'s saves and settings, kept apart from its environments so switching engines or deleting an environment never loses them.",
                                          status: .needed, gameID: g.id))
             }
             if fm.isDirectory(shaderCacheURL(g.id)) {
                 items.append(StorageItem(url: shaderCacheURL(g.id), group: g.name, title: "Shader cache",
-                                         note: "Graphics already prepared for this game, so it doesn't stutter preparing them again. If deleted, it's rebuilt as you play, with some stutter at first.",
+                                         note: "Graphics already prepared for this \(g.noun), so it doesn't stutter preparing them again. If deleted, it's rebuilt as you play, with some stutter at first.",
                                          status: .optional, gameID: g.id))
             }
             let logs = bottleURL(g.id).appendingPathComponent("logs", isDirectory: true)
             if fm.isDirectory(logs) {
                 items.append(StorageItem(url: logs, group: g.name, title: "Logs",
-                                         note: "Records of the game's recent runs, which Troubleshoot reads. New ones are written the next time it runs.",
+                                         note: "Records of the \(g.noun)'s recent runs, which Troubleshoot reads. New ones are written the next time it runs.",
                                          status: .optional, gameID: g.id))
             }
         }
@@ -209,7 +209,7 @@ extension AppModel {
             let folder = bottleURL(g.id).appendingPathComponent("mod-backups", isDirectory: true)
             guard fm.isDirectory(folder) else { continue }
             items.append(StorageItem(url: folder, group: g.name, title: "Mod backups",
-                                     note: "The game's original files that installed mods replaced. Ferry puts them back when you remove a mod, so they stay until then.",
+                                     note: "The \(g.noun)'s original files that installed mods replaced. Ferry puts them back when you remove a mod, so they stay until then.",
                                      status: .needed, gameID: g.id))
         }
 
@@ -220,7 +220,7 @@ extension AppModel {
                 url: dll.deletingLastPathComponent().deletingLastPathComponent(), group: "Ferry",
                 title: "DXVK\(version) on KosmicKrisp (beta)",
                 note: (users.isEmpty ? "Not used by any program in your library." : "Used by \(users.map(\.name).joined(separator: ", ")).")
-                    + " If deleted, those games go back to Ferry's regular DXVK; download it again from Settings ▸ Components.",
+                    + " If deleted, those programs go back to Ferry's regular DXVK; download it again from Settings ▸ Components.",
                 status: .optional))
         }
 
@@ -250,12 +250,12 @@ extension AppModel {
                                      status: .downloads))
         }
         if fm.isDirectory(Paths.icons) {
-            items.append(StorageItem(url: Paths.icons, group: "Ferry", title: "Game icons",
+            items.append(StorageItem(url: Paths.icons, group: "Ferry", title: "Library icons",
                                      note: "Icons for the library and your Mac shortcuts.", status: .needed))
         }
         if let made = try? fm.contentsOfDirectory(atPath: Paths.shortcuts.path), !made.isEmpty {
             items.append(StorageItem(url: Paths.shortcuts, group: "Ferry", title: "Mac shortcuts (~/Applications/Ferry Games)",
-                                     note: "The shortcuts you made to start games from Launchpad, Spotlight or the Dock. Delete one in Finder to remove it (Settings ▸ System ▸ Show Mac Shortcuts Folder).",
+                                     note: "The shortcuts you made to start games and apps from Launchpad, Spotlight or the Dock. Delete one in Finder to remove it (Settings ▸ System ▸ Show Mac Shortcuts Folder).",
                                      status: .needed))
         }
         let saveBackups = fm.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Ferry Backups", isDirectory: true)
@@ -318,7 +318,7 @@ struct StorageView: View {
         case games, engines, templates, other
         var title: String {
             switch self {
-            case .games: return "Games and saves"
+            case .games: return "Games, apps and saves"
             case .engines: return "Engines"
             case .templates: return "Ready-made environments"
             case .other: return "Downloads and other"
@@ -424,7 +424,7 @@ struct StorageView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This frees about \(DiskUsage.text(selectedBytes)) and can't be undone. Ferry sets up an environment again if a game needs it later.")
+            Text("This frees about \(DiskUsage.text(selectedBytes)) and can't be undone. Ferry sets up an environment again if a game or app needs it later.")
         }
     }
 

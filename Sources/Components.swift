@@ -80,14 +80,14 @@ enum Component: String, CaseIterable, Identifiable {
         case .sevenZip: return "Unpacks games that come as archives faster, including multi-part ones (.part1.rar, .7z.001). Under 1 MB."
         case .dxvk3: return "The newest official DXVK, for 32-bit DirectX 9 games on Mullion, drawn through KosmicKrisp (from Mach9) instead of MoltenVK. Ferry's regular DXVK for these games is from 2023. Experimental: used only for games where you turn it on, next to DirectX 9 via DXVK."
         case .d3dmetal4: return "Apple's newest D3DMetal (Game Porting Toolkit 4 beta: DirectX 12 through Metal 4) on Wine 11, from MetalSharp's x86_64 build, instead of the Game Porting Toolkit's Wine 7.7. Once installed, every game on the D3DMetal engine uses it, each with a new Windows environment of its own (the first start sets it up). On macOS before 27 it brings D3DMetal 3.0. Runs through Rosetta. Remove it in Settings ▸ Engines to go back."
-        case .webView2: return "The browser engine some newer launchers use for their window or login page. Installed once and shared; each game uses it only with WebView2 for launchers turned on in its settings. Often doesn't work under Wine."
+        case .webView2: return "The browser engine some newer launchers use for their window or login page. Installed once and shared; each game or app uses it only with WebView2 for launchers turned on in its settings. Often doesn't work under Wine."
         }
     }
 
     var withoutIt: String? {
         switch self {
-        case .metalSharp: return "Without it: no Mullion engine, and no fallback once Rosetta is limited after macOS 27. Downloaded later if a game is set to use it."
-        case .dxvk: return "Without it: downloaded later the first time a game needs DXVK."
+        case .metalSharp: return "Without it: no Mullion engine, and no fallback once Rosetta is limited after macOS 27. Downloaded later if a game or app is set to use it."
+        case .dxvk: return "Without it: downloaded later the first time a game or app needs DXVK."
         case .mach9: return "Without it: downloaded later the first time a DirectX 9 game needs it, which makes that first start take a few minutes longer."
         case .gstreamer: return "Without it: some cutscenes may show black or freeze."
         case .dotNet48, .dotNetModern, .xna, .physX, .openAL: return "Without it: games and programs that need it won't start."
@@ -95,7 +95,7 @@ enum Component: String, CaseIterable, Identifiable {
         case .shaderCompiler: return "Without it: Wine's built-in compiler is used, which misses some effects."
         case .cncDdraw: return "Without it: the old 2D game fix switch won't do anything."
         case .sevenZip: return "Without it: archives unpack with macOS's slower built-in tool, and 7-Zip is downloaded the first time you drop a multi-part archive."
-        case .webView2: return "Without it: the WebView2 for launchers switch in game settings stays greyed out. You can install it below at any time."
+        case .webView2: return "Without it: the WebView2 for launchers switch in each game's or app's settings stays greyed out. You can install it below at any time."
         default: return nil
         }
     }

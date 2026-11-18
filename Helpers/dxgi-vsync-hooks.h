@@ -78,7 +78,7 @@ static void vsync_release(void *object) {
 
 static void vsync_wait(UINT *interval, UINT *flags) {
     if (*flags & 0x1 ) return;
-    if (!*interval) {
+    if (vsync_sync && !*interval) {
         *interval = 1;
         *flags &= ~0x200u;
         if (InterlockedIncrement(&vsync_waits) == 1) vsync_note("the game presents without VSync; turning it on");

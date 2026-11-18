@@ -116,7 +116,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         self = instance;
         char value[8];
         logging = GetEnvironmentVariableA("FERRY_DXGI_LOG", value, sizeof value) > 0;
-        vsync = GetEnvironmentVariableA("FERRY_VSYNC", value, sizeof value) > 0 && !lstrcmpA(value, "1");
+        vsync = vsync_read_settings();
         vsync_init();
         DisableThreadLibraryCalls(instance);
     } else if (reason == DLL_PROCESS_DETACH && vsync_waits) {

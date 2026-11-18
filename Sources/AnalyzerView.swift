@@ -34,7 +34,7 @@ final class AnalyzerModel: ObservableObject {
         let isFolder = fm.isDirectory(url)
         let isArchive = Self.isArchive(url)
         guard isFolder || isArchive || Self.programExtensions.contains(ext) else {
-            problem = "Ferry can check Windows programs (.exe, .msi, .bat), game folders, and .zip, .rar or .7z archives (including multi-part ones)."
+            problem = "Ferry can check Windows programs (.exe, .msi, .bat), folders, and .zip, .rar or .7z archives (including multi-part ones)."
             return
         }
         report = nil
@@ -127,7 +127,7 @@ final class AnalyzerModel: ObservableObject {
         if total > 0, let free = DiskUsage.free(at: place.url).map(Int.init), total + 300_000_000 > free {
             cleanUp(container)
             let drive = (try? place.url.resourceValues(forKeys: [.volumeNameKey]).volumeName) ?? "This drive"
-            problem = "\(name) unpacks to \(Self.bytes(total)), but \(drive) only has \(Self.bytes(free)) free. Free up some space, or pick a bigger drive in Settings ▸ Defaults ▸ Games from archives."
+            problem = "\(name) unpacks to \(Self.bytes(total)), but \(drive) only has \(Self.bytes(free)) free. Free up some space, or pick a bigger drive in Settings ▸ Defaults ▸ Games and Apps from archives."
             return nil
         }
 
@@ -345,7 +345,7 @@ final class AnalyzerModel: ObservableObject {
             do {
                 try fm.moveItem(at: r.root, to: dest)
             } catch {
-                problem = "Couldn't move the game into \(destination.path): \(error.localizedDescription)"
+                problem = "Couldn't move it into \(destination.path): \(error.localizedDescription)"
                 return
             }
             exe = URL(fileURLWithPath: dest.path + r.exe.path.dropFirst(r.root.path.count))
@@ -432,7 +432,7 @@ struct AnalyzerView: View {
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.secondary))
             VStack(alignment: .leading, spacing: 3) {
-                Text("Drop a program, game folder or archive to check it").font(.headline)
+                Text("Drop a program, folder or archive to check it").font(.headline)
                 Text(".exe, .msi, .bat, a folder, or .zip / .rar / .7z (any part of a multi-part archive)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -453,7 +453,7 @@ struct AnalyzerView: View {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = (AnalyzerModel.programExtensions + AnalyzerModel.archivePickerExtensions)
             .compactMap { UTType(filenameExtension: $0) } + [.folder]
-        panel.message = "Choose a Windows program, a game folder, or an archive"
+        panel.message = "Choose a Windows program, a folder, or an archive"
         if panel.runModal() == .OK, let url = panel.url { analyzer.analyze(url) }
     }
 
@@ -486,7 +486,7 @@ struct AnalyzerView: View {
                     .foregroundStyle(.green)
                     .fixedSize(horizontal: false, vertical: true)
             } else if !model.setupComplete {
-                Text("Finish Ferry's setup in the main window to add games.").font(.caption).foregroundStyle(.secondary)
+                Text("Finish Ferry's setup in the main window to add games and apps.").font(.caption).foregroundStyle(.secondary)
             } else if report.verdict == .wontWork {
                 Text("Ferry can't run this one.").font(.caption).foregroundStyle(.secondary)
             }
@@ -518,7 +518,7 @@ private struct ReportView: View {
 
             if report.candidates.count > 1 {
                 if report.asksWhichProgram {
-                    Label("This game has more than one program. Choose the one Ferry should start. When single-player and multiplayer are separate programs, Ferry offers to add the other one as its own entry too.",
+                    Label("This folder has more than one program. Choose the one Ferry should start. When single-player and multiplayer are separate programs, Ferry offers to add the other one as its own entry too.",
                           systemImage: "questionmark.circle")
                         .font(.callout)
                         .fixedSize(horizontal: false, vertical: true)
@@ -578,7 +578,7 @@ private struct ReportView: View {
                 }
             }
 
-            Text("This is a best guess from the program's files; Ferry hasn't run it. If the game doesn't start, Ferry offers the next engine to try.")
+            Text("This is a best guess from the program's files; Ferry hasn't run it. If it doesn't start, Ferry offers the next engine to try.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

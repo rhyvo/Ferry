@@ -303,7 +303,7 @@ static void forget(IDirect3DDevice9 *d) {
 }
 
 static void syncToDisplay(D3DPRESENT_PARAMETERS *params) {
-    if (!vsync || !params || params->PresentationInterval != D3DPRESENT_INTERVAL_IMMEDIATE) return;
+    if (!vsync_sync || !params || params->PresentationInterval != D3DPRESENT_INTERVAL_IMMEDIATE) return;
     params->PresentationInterval = D3DPRESENT_INTERVAL_ONE;
     note("the game presents without VSync; turning it on");
 }
@@ -462,7 +462,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         char value[16];
         logging = GetEnvironmentVariableA("FERRY_D3D9_LOG", value, sizeof value) > 0;
         if (GetEnvironmentVariableA("FERRY_D3D9_COPIES", value, sizeof value) > 0 && !lstrcmpiA(value, "off")) enabled = 0;
-        vsync = GetEnvironmentVariableA("FERRY_VSYNC", value, sizeof value) > 0 && !lstrcmpA(value, "1");
+        vsync = vsync_read_settings();
         DisableThreadLibraryCalls(instance);
     } else if (reason == DLL_PROCESS_DETACH && (converted || passed)) {
         note("finished: drew %ld copies, passed %ld on", converted, passed);

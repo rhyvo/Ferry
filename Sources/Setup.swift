@@ -35,7 +35,7 @@ enum SetupStep: Int, CaseIterable, Identifiable {
         case .mach9: return "DirectX 9 → Metal (mtld3d) and DirectX 10–12 → Metal (DXMT, vkd3d-proton); doesn't need Rosetta"
         case .libraries: return "Visual C++ 2005–2022, DirectX 2010 and its shader compiler, .NET Framework 4.8, .NET 6 and 8, XNA 4.0, OpenAL, PhysX, LAV video codecs"
         case .gptkTemplate: return "64-bit Visual C++ (copied from Wine Staging's), the shader compiler and fonts"
-        case .stagingTemplate: return "Every library and font, plus DXVK, so new games start instantly (.NET takes several minutes)"
+        case .stagingTemplate: return "Every library and font, plus DXVK, so new games and apps start instantly (.NET takes several minutes)"
         case .arm64Template: return "Every library and font, including the 32-bit ones (macOS 26.4 and later)"
         case .mach9Template: return "Every library and font, 32- and 64-bit, for DirectX 9–12 games on Metal"
         }
@@ -313,7 +313,7 @@ extension AppModel {
 
     func updateEngine(_ kind: RuntimeKind) async throws {
         guard running.isEmpty else {
-            throw FerryError("Quit the games that are running first. Updating Wine underneath a running game can crash it.")
+            throw FerryError("Quit the games and apps running in Ferry first. Updating Wine underneath a running program can crash it.")
         }
         guard !updating else { return }
         updating = true

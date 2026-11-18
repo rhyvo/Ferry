@@ -164,7 +164,7 @@ extension AppModel {
         let owner = environmentOwner(of: g)
         let saves = savesURL(owner.id)
         guard fm.exists(saves) else {
-            errorMessage = "\(owner.name) has no saves in its Windows environment yet. Some games keep saves next to their own files instead; back those up from the game's folder."
+            errorMessage = "\(owner.name) has no saves in its Windows environment yet. Some programs keep saves next to their own files instead; back those up from the \(owner.noun)'s folder."
             return
         }
         let folder = fm.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Ferry Backups", isDirectory: true)
