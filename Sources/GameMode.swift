@@ -69,3 +69,7 @@ extension RuntimeManager {
         return (try? PropertyListSerialization.propertyList(from: xml, format: nil)) as? [String: Any]
     }
 }
+
+extension Game {
+    var noun: String { usesGameMode ? "game" : "app" }
+}

@@ -160,7 +160,7 @@ struct TaskManagerView: View {
             Button("End All", role: .destructive) { endAll(group) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Anything not saved in the game is lost.")
+            Text("Anything not saved in it is lost.")
         }
         .task {
             while !Task.isCancelled {

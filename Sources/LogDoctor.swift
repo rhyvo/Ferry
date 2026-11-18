@@ -42,25 +42,25 @@ enum LogDoctor {
                 if !missing[key]!.dlls.contains(where: { $0.caseInsensitiveCompare(dll) == .orderedSame }) { missing[key]!.dlls.append(dll) }
             }
             if lower.contains("err:module:import_dll"), lower.contains("c000007b"), let dll = capture(line, #"Loading library (\S+?\.dll)"#) {
-                add(LogFinding(id: "arch", title: "\(dll) is the wrong kind for this game",
-                               detail: "The game found a 32-bit copy of \(dll) where it needs a 64-bit one, or the other way round. It's usually a file that was copied into the game's folder by hand: remove it, or replace it with the right version.",
+                add(LogFinding(id: "arch", title: "\(dll) is the wrong kind for this program",
+                               detail: "It found a 32-bit copy of \(dll) where it needs a 64-bit one, or the other way round. It's usually a file that was copied into its folder by hand: remove it, or replace it with the right version.",
                                fix: .none, evidence: line))
             }
             if (lower.contains("you must install") && lower.contains(".net")) || (lower.contains("hostfxr.dll") && lower.contains("not found")) {
-                add(library(.dotNetModern, "The game needs .NET 6 or 8", "It's built on Microsoft's newer .NET, which isn't in this game's Windows environment.", line))
+                add(library(.dotNetModern, "It needs .NET 6 or 8", "It's built on Microsoft's newer .NET, which isn't in its Windows environment.", line))
             }
             if lower.contains("err:mscoree") && (lower.contains("mono is not installed") || lower.contains("getruntimehost")) {
-                add(library(.dotNet48, "The game needs the .NET Framework", "It's a .NET program and this game's Windows environment has no .NET Framework.", line))
+                add(library(.dotNet48, "It needs the .NET Framework", "It's a .NET program and its Windows environment has no .NET Framework.", line))
             }
             if lower.contains("could not load file or assembly 'microsoft.xna.framework") {
-                add(library(.xna, "The game needs the XNA Framework", "It's an XNA game, and XNA isn't in this game's Windows environment.", line))
+                add(library(.xna, "It needs the XNA Framework", "It's an XNA game, and XNA isn't in its Windows environment.", line))
             }
             if lower.contains("unimplemented function"), let dll = capture(line, #"unimplemented function ([^\s,]+)"#) {
                 if let c = component(for: dll.components(separatedBy: ".").first ?? "") {
-                    add(library(c, "The game needs \(c.title)", "It called \(dll), which Wine only has a stand-in for.", line))
+                    add(library(c, "It needs \(c.title)", "It called \(dll), which Wine only has a stand-in for.", line))
                 } else if let next {
-                    add(LogFinding(id: "unimplemented", title: "This engine is missing a Windows function the game uses",
-                                   detail: "The game called \(dll), which this engine's Wine doesn't have. Another engine's Wine may.",
+                    add(LogFinding(id: "unimplemented", title: "This engine is missing a Windows function it uses",
+                                   detail: "It called \(dll), which this engine's Wine doesn't have. Another engine's Wine may.",
                                    fix: .engine(next), evidence: line))
                 }
             }
@@ -72,7 +72,7 @@ enum LogDoctor {
             if ["no adapters found", "vk_error_initialization_failed", "vk_error_incompatible_driver",
                 "failed to create d3d device", "d3d11createdevice failed", "vkcreateinstance failed"].contains(where: lower.contains), let next {
                 add(LogFinding(id: "graphics", title: "This engine's graphics couldn't start",
-                               detail: "The engine couldn't set up DirectX for this game. Engines translate graphics in different ways, so another one may work.",
+                               detail: "The engine couldn't set up DirectX for it. Engines translate graphics in different ways, so another one may work.",
                                fix: .engine(next), evidence: line))
             }
             if lower.contains("steamapi_init") && (lower.contains("fail") || lower.contains("must be running")) {
@@ -93,14 +93,14 @@ enum LogDoctor {
             guard let entry = missing[key] else { continue }
             let names = entry.dlls.joined(separator: ", ")
             if let c = Component(rawValue: key) {
-                add(library(c, "The game needs \(c.title)", "It couldn't find \(names), which come with \(c.title).", entry.line))
+                add(library(c, "It needs \(c.title)", "It couldn't find \(names), which come with \(c.title).", entry.line))
             } else if key == "steam" {
                 add(LogFinding(id: "missing-steam", title: "The game's Steam file is missing",
                                detail: "It couldn't find \(names), which normally comes with the game. Check that the whole game folder was copied or extracted.",
                                fix: .none, evidence: entry.line))
             } else {
-                add(LogFinding(id: "missing-\(key)", title: "The game is missing \(names)",
-                               detail: "This file isn't part of Windows or of a library Ferry installs, so it normally comes with the game. Check that the whole game folder was copied or extracted, or search for what \(names) belongs to.",
+                add(LogFinding(id: "missing-\(key)", title: "It's missing \(names)",
+                               detail: "This file isn't part of Windows or of a library Ferry installs, so it normally comes with the program. Check that its whole folder was copied or extracted, or search for what \(names) belongs to.",
                                fix: .none, evidence: entry.line))
             }
         }
@@ -109,8 +109,8 @@ enum LogDoctor {
 
         if findings.isEmpty, let next,
            let line = log.split(whereSeparator: \.isNewline).first(where: { $0.contains("wine: Unhandled") }) {
-            add(LogFinding(id: "crash", title: "The game crashed",
-                           detail: "Windows reported a crash inside the game and the log names no missing file. That usually means this engine can't run it.",
+            add(LogFinding(id: "crash", title: "It crashed",
+                           detail: "Windows reported a crash inside the program and the log names no missing file. That usually means this engine can't run it.",
                            fix: .engine(next), evidence: String(line)))
         }
         return findings
@@ -118,7 +118,7 @@ enum LogDoctor {
 
     private static func library(_ c: Component, _ title: String, _ why: String, _ line: String) -> LogFinding {
         LogFinding(id: c.rawValue, title: title,
-                   detail: "\(why) Ferry can install it into this game's Windows environment (this reinstalls its Windows libraries and can take a few minutes).",
+                   detail: "\(why) Ferry can install it into its Windows environment (this reinstalls its Windows libraries and can take a few minutes).",
                    fix: .library(c), evidence: line)
     }
 

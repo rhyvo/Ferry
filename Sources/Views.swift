@@ -138,7 +138,7 @@ struct ErrorAlert: ViewModifier {
             } message: {
                 Text(model.noticeMessage ?? "")
             }
-            .alert("\(model.launchFailure?.name ?? "The game") closed right after starting",
+            .alert("\(model.launchFailure?.name ?? "The program") closed right after starting",
                    isPresented: Binding(get: { model.launchFailure != nil }, set: { if !$0 { model.launchFailure = nil } }),
                    presenting: model.launchFailure) { failure in
                 let logFix = failure.findings.first.map { !$0.switchesEngine } ?? false
@@ -227,15 +227,15 @@ struct ErrorAlert: ViewModifier {
     private func launchFailureMessage(_ f: LaunchFailure) -> String {
         var text = "If you closed it yourself, you can ignore this.\n\nIf it closed on its own, or you closed it because it wasn't working (a black screen, an error, a freeze), \(f.failed.short) probably can't run it."
         if let next = f.next {
-            text += " Try \(next.short): it becomes this game's engine if it works."
+            text += " Try \(next.short): it becomes its engine if it works."
         } else {
             text += " There's no other engine left to try automatically."
         }
         if let found = f.findings.first {
-            text += "\n\nFerry read the game log and found a likely cause: \(found.title.prefix(1).lowercased() + found.title.dropFirst()). Troubleshoot shows it and the fix."
+            text += "\n\nFerry read the log and found a likely cause: \(found.title.prefix(1).lowercased() + found.title.dropFirst()). Troubleshoot shows it and the fix."
         } else {
-            text += " Troubleshoot walks you through fixes for what you saw, including the game log."
-            if !f.logTail.isEmpty { text += "\n\nEnd of the game log:\n" + f.logTail }
+            text += " Troubleshoot walks you through fixes for what you saw, including the log."
+            if !f.logTail.isEmpty { text += "\n\nEnd of the log:\n" + f.logTail }
         }
         return text
     }
@@ -741,9 +741,9 @@ struct GameRow: View {
             Button("Settings…", action: openSettings)
             Divider()
             Button("Open C: Drive") { model.openDriveC(game.id) }
-            Button("Show Game Files in Finder") { model.showGameInFinder(game.id) }
+            Button("Show Files in Finder") { model.showGameInFinder(game.id) }
             Button("Make Mac Shortcut") { model.makeShortcut(game.id) }
-            Button("Show Game Log") { model.showLog(game.id, "game") }
+            Button("Show Log") { model.showLog(game.id, "game") }
             Button("Troubleshoot…") { model.troubleshootGame = game.id }
             Button("Mods…") { model.modsGame = game.id }
             Divider()
@@ -764,7 +764,7 @@ struct GameSettingsView: View {
         VStack(spacing: 0) {
             if let game = Binding($draft) {
                 Form {
-                    Section("Game") {
+                    Section(game.wrappedValue.noun.capitalized) {
                         TextField("Name", text: game.name)
                         LabeledContent("Icon") {
                             HStack(spacing: 10) {
@@ -772,7 +772,7 @@ struct GameSettingsView: View {
                                 Picker("Icon", selection: game.iconMode) {
                                     ForEach(IconMode.allCases) { Text($0.title).tag($0) }
                                 }
-                                .help("Where the game's icon comes from, in the library and in Mac shortcuts.")
+                                .help("Where its icon comes from, in the library and in Mac shortcuts.")
                                 .labelsHidden()
                                 .fixedSize()
                                 Button("Choose Image…") {
@@ -813,7 +813,7 @@ struct GameSettingsView: View {
                                 Task { if let changed = await model.pickExecutable(for: current) { draft = changed } }
                             }
                         }
-                        .help("The program Ferry starts. Lists the other programs in the game's folder, best guess first: single-player before multiplayer and launchers, servers and tools last.")
+                        .help("The program Ferry starts. Lists the other programs in its folder, best guess first: single-player before multiplayer and launchers, servers and tools last.")
                         .task(id: game.wrappedValue.exePath) {
                             let exe = URL(fileURLWithPath: game.wrappedValue.exePath)
                             guard !ModLayout.looksLikeInstaller(exe) else { programs = []; return }
@@ -828,7 +828,7 @@ struct GameSettingsView: View {
                                 Text($0 == .auto ? "Automatic (\(model.recommendedEngine(game.wrappedValue).short))" : $0.title).tag($0)
                             }
                         }
-                        .help("Which translator runs this game. Automatic picks the best one for its graphics and architecture; the compatibility check shows why.")
+                        .help("Which translator runs this \(game.wrappedValue.noun). Automatic picks the best one for its graphics and architecture; the compatibility check shows why.")
                         if game.wrappedValue.settings.engine != .auto && game.wrappedValue.sharedWith == nil
                             && model.recommendedEngine(game.wrappedValue) != game.wrappedValue.settings.engine {
                             LabeledContent("Recommended: \(model.recommendedEngine(game.wrappedValue).short)") {
@@ -859,7 +859,7 @@ struct GameSettingsView: View {
                             .help("Windows' scaling for menus, text and buttons. Automatic uses 200% with Retina for apps (so they're sharp at their usual size) and 100% for games, which handle their own resolution.")
                         }
                         Toggle("Performance HUD", isOn: game.settings.metalHUD)
-                            .help("Shows the frame rate and GPU statistics (Metal HUD) over the game.")
+                            .help("Shows the frame rate and GPU statistics (Metal HUD) over the \(game.wrappedValue.noun).")
                         FrameLimitPicker(game: game)
                         if model.resolvedEngine(game.wrappedValue) == .d3dmetal {
                             Toggle("Report graphics card as NVIDIA", isOn: game.settings.reportNVIDIA)
@@ -1018,7 +1018,7 @@ struct GameSettingsView: View {
                                 Text("Windows 7").tag("win7")
                                 Text("Windows XP").tag("winxp64")
                             }
-                            .help("The Windows version the game sees. Some older games refuse to start, or behave differently, on newer versions.")
+                            .help("The Windows version the \(game.wrappedValue.noun) sees. Some older programs refuse to start, or behave differently, on newer versions.")
                         } else {
                             LabeledContent("Windows version, Retina and keyboard") {
                                 Text("Set by \(model.environmentOwner(of: game.wrappedValue).name)")
@@ -1026,11 +1026,11 @@ struct GameSettingsView: View {
                         }
                         if game.wrappedValue.sharedWith == nil {
                             Toggle("⌘ Command as Ctrl", isOn: game.settings.commandIsCtrl)
-                                .help("Command works as Ctrl in the game, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
+                                .help("Command works as Ctrl in the \(game.wrappedValue.noun), so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
                             Toggle("⌥ Option as Alt", isOn: game.settings.optionIsAlt)
-                                .help("Option works as Alt in the game, for shortcuts such as Alt+Enter.")
+                                .help("Option works as Alt in the \(game.wrappedValue.noun), for shortcuts such as Alt+Enter.")
                             Toggle("Exclusive full-screen mode", isOn: game.settings.captureFullscreen)
-                                .help("Lets the game change the display's resolution. When off, full screen is virtual: the game is scaled to fit the display.")
+                                .help("Lets the \(game.wrappedValue.noun) change the display's resolution. When off, full screen is virtual: it's scaled to fit the display.")
                             if game.wrappedValue.settings.captureFullscreen && game.wrappedValue.graphics == .unknown {
                                 Text("Meant for games. In an app like this one, a maximized window can trap the mouse and stop resizing, so it's best left off.")
                                     .font(.caption).foregroundStyle(.orange)
@@ -1041,7 +1041,7 @@ struct GameSettingsView: View {
                         Toggle("Advertise AVX (Rosetta)", isOn: game.settings.advertiseAVX)
                             .help("Reports AVX support to games that require it. Applies to engines that run through Rosetta.")
                         Toggle("Show on Discord", isOn: game.settings.showOnDiscord)
-                            .help("Shows this game on your Discord profile while it runs.")
+                            .help("Shows this \(game.wrappedValue.noun) on your Discord profile while it runs.")
                         ArgsEditor(text: game.settings.arguments)
                             .id("args-\(gameID)")
                         EnvEditor(text: game.settings.extraEnv)
@@ -1062,7 +1062,7 @@ struct GameSettingsView: View {
                         }
                         HStack {
                             Button("Make Mac Shortcut") { model.makeShortcut(gameID) }
-                            Button("Show Game Log") { model.showLog(gameID, "game") }
+                            Button("Show Log") { model.showLog(gameID, "game") }
                             Button("Troubleshoot…") {
                                 if let draft { model.update(draft) }
                                 dismiss()
@@ -1109,7 +1109,7 @@ struct GameSettingsView: View {
         }
         .frame(minWidth: 560, idealWidth: 620, minHeight: 560, idealHeight: 720)
         .onAppear { draft = model.game(gameID) }
-        .confirmationDialog("Remove \(draft?.name ?? "this game") from Ferry?", isPresented: $confirmRemove) {
+        .confirmationDialog("Remove \(draft?.name ?? "this program") from Ferry?", isPresented: $confirmRemove) {
             if draft?.sharedWith != nil {
                 Button("Remove") {
                     model.remove(gameID, deleteWindowsFiles: false)
@@ -1134,10 +1134,10 @@ struct GameSettingsView: View {
     private var removeMessage: String {
         guard let g = draft else { return "" }
         if g.sharedWith != nil {
-            return "Only the Ferry entry goes away. \(model.environmentOwner(of: g).name)'s Windows environment, and the game inside it, stay."
+            return "Only the Ferry entry goes away. \(model.environmentOwner(of: g).name)'s Windows environment, and the \(g.noun) inside it, stay."
         }
         let sharing = model.sharers(of: g.id).count
-        var text = "The game's own files on your Mac are never touched."
+        var text = "The \(g.noun)'s own files on your Mac are never touched."
         if sharing > 0 {
             text += " The \(sharing) program\(sharing == 1 ? "" : "s") added to its environment will be removed from Ferry too."
         }
@@ -1509,7 +1509,7 @@ struct ArgsEditor: View {
                 .buttonStyle(.borderless)
             }
         }
-        .help("Extra options passed to the game when it starts, such as -windowed or -skipintro. Which ones work depends on the game.")
+        .help("Extra options passed to the program when it starts, such as -windowed or -skipintro. Which ones work depends on the program.")
         .onAppear { rows = ArgsText.options(text).map { Row(value: $0) } }
         .onChange(of: rows) {
             text = rows.map { $0.value.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
@@ -1552,7 +1552,7 @@ struct EnvEditor: View {
                 .buttonStyle(.borderless)
             }
         }
-        .help("Settings passed to Wine and its graphics layers when the game starts, written as NAME = value. For troubleshooting; most games need none.")
+        .help("Settings passed to Wine and its graphics layers when the program starts, written as NAME = value. For troubleshooting; most programs need none.")
         .onAppear { load(text) }
     }
 

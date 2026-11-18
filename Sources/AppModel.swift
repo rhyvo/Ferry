@@ -509,7 +509,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepare(_ id: UUID) async throws -> PreparedGame {
-        guard var g = game(id) else { throw FerryError("That game isn't in the library anymore.") }
+        guard var g = game(id) else { throw FerryError("That program isn't in the library anymore.") }
         let engine = resolvedEngine(g)
         let kind = runtimeKind(g)
         if kind.needsRosetta {
@@ -585,7 +585,7 @@ final class AppModel: ObservableObject {
             await Shell.run(wine.path, ["wineboot", "--init"], env: env, log: setupLog)
             if let server = runtimes.wineserver(for: kind) { await Shell.run(server.path, ["-w"], env: env, log: setupLog) }
             guard fm.exists(prefix.appendingPathComponent("system.reg")) else {
-                throw FerryError("Wine couldn't create the Windows environment. Open the game's settings and click Show Setup Log for details.")
+                throw FerryError("Wine couldn't create the Windows environment. Open its settings and click Show Setup Log for details.")
             }
             g.applied[kind.rawValue] = nil
         }
@@ -635,7 +635,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard !updating else {
-            errorMessage = "Ferry is installing updates. Your game can start once they finish."
+            errorMessage = "Ferry is installing updates. It can start once they finish."
             return
         }
         preparing.insert(id)
@@ -1243,6 +1243,6 @@ final class AppModel: ObservableObject {
 
     func handle(_ url: URL) {
         guard url.scheme == "ferry", url.host == "launch", let id = UUID(uuidString: url.lastPathComponent) else { return }
-        if game(id) != nil { play(id) } else { errorMessage = "That shortcut's game was removed from Ferry." }
+        if game(id) != nil { play(id) } else { errorMessage = "That shortcut's program was removed from Ferry." }
     }
 }

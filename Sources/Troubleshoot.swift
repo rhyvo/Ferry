@@ -11,7 +11,7 @@ struct TroubleshootView: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .blackScreen: return "Black screen, but I can hear the game"
+            case .blackScreen: return "The screen is black, but there's sound"
             case .blackObjects: return "Objects or effects are black, or take ages to appear"
             case .crashes: return "It crashes or closes"
             case .slow: return "It's slow or stutters"
@@ -95,7 +95,7 @@ struct TroubleshootView: View {
         case .blackScreen:
             if engine == .d3dmetal { hideROVStep(g, first: true); nvidiaStep(g) }
             switchEngineStep(g)
-            note("Still black? Show the game log from the game's settings and check for errors, or ask for help with the log.")
+            note("Still black? Show the log from its settings and check for errors, or ask for help with the log.")
         case .blackObjects:
             note("The first time a game needs a material or effect, its shader has to be translated for Metal and built. Until it's ready, many games draw nothing there. It gets faster every session: quit from the game's own menu so the built shaders are saved.")
             if engine == .d3dmetal { hideROVStep(g, first: false) }
@@ -106,7 +106,7 @@ struct TroubleshootView: View {
         case .crashes:
             if engine == .d3dmetal { nvidiaStep(g) }
             switchEngineStep(g)
-            action("Show the game log", detail: "The last lines usually say what went wrong.", key: "log", label: "Show Log") {
+            action("Show the log", detail: "The last lines usually say what went wrong.", key: "log", label: "Show Log") {
                 model.showLog(g.id, "game")
             }
         case .slow:
@@ -128,21 +128,24 @@ struct TroubleshootView: View {
             }
             if g.settings.captureFullscreen {
                 toggleStep(g, title: "Exclusive full-screen mode", detail: "It's on for this program. It lets Wine take over the display and hold the mouse whenever a window covers the screen, which suits games but traps the mouse in apps.",
-                           key: "exclusive", isOn: g.settings.captureFullscreen) { $0.settings.captureFullscreen.toggle() }
+                           key: "exclusive", isOn: g.settings.captureFullscreen, suggest: false) { $0.settings.captureFullscreen.toggle() }
             }
         case .pointerShows:
-            if engine == .mach9 && !g.settings.captureFullscreen {
+            if engine == .mach9 {
                 toggleStep(g, title: "Exclusive full-screen mode",
-                           detail: "Mach9 normally shows full-screen games at a scaled, virtual resolution. In that mode it keeps the mouse in the game but can leave the Mac's pointer on screen. Exclusive full-screen lets the game hide it; the screen switches resolution when the game starts and quits.",
+                           detail: g.settings.captureFullscreen
+                               ? "It's on for this \(g.noun), which lets it hide the Mac's pointer. If the pointer still shows, try the steps below."
+                               : "Mach9 normally shows full-screen games at a scaled, virtual resolution. In that mode it keeps the mouse in the game but can leave the Mac's pointer on screen. Exclusive full-screen lets the game hide it; the screen switches resolution when the game starts and quits.",
                            key: "exclusive", isOn: g.settings.captureFullscreen) { $0.settings.captureFullscreen.toggle() }
-            } else {
-                note("Click once inside the game so it's the active app: macOS only lets the app in front hide the pointer. If a game's own menus use the mouse, the pointer comes back while they're open.")
+            }
+            if engine != .mach9 || g.settings.captureFullscreen {
+                note("Click once inside its window so it's the active app: macOS only lets the app in front hide the pointer. If its own menus use the mouse, the pointer comes back while they're open.")
                 switchEngineStep(g)
             }
         case .blankLauncher:
             if model.webView2Installed {
                 toggleStep(g, title: "WebView2 for launchers",
-                           detail: "Many newer launchers draw their window or login page as a web page with Microsoft's WebView2. This points the game at Ferry's shared copy.",
+                           detail: "Many newer launchers draw their window or login page as a web page with Microsoft's WebView2. This points it at Ferry's shared copy.",
                            key: "webview2", isOn: g.settings.webView2) { $0.settings.webView2.toggle() }
             } else {
                 webView2InstallStep()
@@ -154,7 +157,7 @@ struct TroubleshootView: View {
 
     @ViewBuilder
     private func logSection(_ g: Game) -> some View {
-        Label("Found in the game log", systemImage: "doc.text.magnifyingglass").font(.headline)
+        Label("Found in the log", systemImage: "doc.text.magnifyingglass").font(.headline)
         ForEach(findings) { f in
             stepCard(title: f.title, detail: f.detail) {
                 switch f.fix {
@@ -169,8 +172,9 @@ struct TroubleshootView: View {
                     .disabled(model.resolvedEngine(g) == engine)
                 case .webView2:
                     if model.webView2Installed {
-                        Button(g.settings.webView2 ? "On" : "Turn On") { model.apply(f.fix, to: g.id); done.insert("log-" + f.id) }
+                        Button("Turn On") { model.apply(f.fix, to: g.id); done.insert("log-" + f.id) }
                             .disabled(g.settings.webView2)
+                        if g.settings.webView2 { Text("Already on").font(.caption).foregroundStyle(.secondary) }
                     } else {
                         Button(model.installingComponent == .webView2 ? "Installing…" : "Install WebView2") { model.installComponentNow(.webView2) }
                             .disabled(model.installingComponent != nil || model.setupRunning || model.updating)
@@ -211,9 +215,9 @@ struct TroubleshootView: View {
         let current = model.resolvedEngine(g)
         let order = model.fallbackOrder(for: g)
         if let i = order.firstIndex(of: current), i + 1 < order.count {
-            engineStep(g, to: order[i + 1], why: "Each engine translates graphics differently; a game that fails on one often works on another.")
+            engineStep(g, to: order[i + 1], why: "Each engine translates graphics differently; a program that fails on one often works on another.")
         } else if let other = order.first(where: { $0 != current }) {
-            engineStep(g, to: other, why: "Each engine translates graphics differently; a game that fails on one often works on another.")
+            engineStep(g, to: other, why: "Each engine translates graphics differently; a program that fails on one often works on another.")
         }
     }
 
@@ -229,11 +233,11 @@ struct TroubleshootView: View {
         let supported = engine == .dxvk || (engine == .mach9 && g.settings.mach9Direct3D != "wined3d")
             || (g.settings.dxvkD3D9 && engine != .mach9)
         if supported {
-            action("Limit the frame rate to 30", detail: why, key: "fps", label: g.settings.fpsLimit == 30 ? "On" : "Set") {
+            action("Limit the frame rate to 30", detail: why, key: "fps", label: "Set", alreadyOn: g.settings.fpsLimit == 30) {
                 change(g) { $0.settings.fpsLimit = 30 }
             }
         } else {
-            note("Limit the frame rate to 30 in the game's own graphics settings. \(why) (\(engine.short) has no limiter Ferry can set.)")
+            note("Limit the frame rate to 30 in the \(g.noun)'s own graphics settings. \(why) (\(engine.short) has no limiter Ferry can set.)")
         }
     }
 
@@ -246,17 +250,23 @@ struct TroubleshootView: View {
         }
     }
 
-    private func toggleStep(_ g: Game, title: String, detail: String, key: String, isOn: Bool, flip: @escaping (inout Game) -> Void) -> some View {
+    private func toggleStep(_ g: Game, title: String, detail: String, key: String, isOn: Bool, suggest: Bool = true,
+                            flip: @escaping (inout Game) -> Void) -> some View {
         stepCard(title: title, detail: detail) {
-            Button(isOn ? "Turn Off" : "Turn On") { change(g, flip); done.insert(key) }
-            if done.contains(key) { Text("Start the game to try it").font(.caption).foregroundStyle(.secondary) }
+            Button(suggest ? "Turn On" : "Turn Off") { change(g, flip); done.insert(key) }
+                .disabled(isOn == suggest)
+            if done.contains(key) { Text("Start the \(g.noun) to try it").font(.caption).foregroundStyle(.secondary) }
+            else if isOn == suggest { Text(suggest ? "Already on" : "Already off").font(.caption).foregroundStyle(.secondary) }
         }
     }
 
-    private func action(_ title: String, detail: String, key: String, label: String, run: @escaping () -> Void) -> some View {
+    private func action(_ title: String, detail: String, key: String, label: String, alreadyOn: Bool = false,
+                        run: @escaping () -> Void) -> some View {
         stepCard(title: title, detail: detail) {
             Button(label) { run(); done.insert(key) }
+                .disabled(alreadyOn && !done.contains(key))
             if done.contains(key) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+            else if alreadyOn { Text("Already on").font(.caption).foregroundStyle(.secondary) }
         }
     }
 
