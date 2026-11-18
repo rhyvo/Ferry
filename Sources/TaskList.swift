@@ -120,6 +120,33 @@ enum TaskList {
         return found
     }
 
+    static func leftovers(root: String) -> [Int32] {
+        let base = root.hasSuffix("/") ? root : root + "/"
+        let engines = base + "Runtimes/"
+        let me = getuid()
+        let capacity = Int(proc_listallpids(nil, 0)) + 64
+        var pids = [Int32](repeating: 0, count: capacity)
+        let count = Int(proc_listallpids(&pids, Int32(capacity * MemoryLayout<Int32>.size)))
+        var servers: Set<String> = []
+        var programs: [Int32] = []
+        for pid in pids.prefix(max(0, count)) where pid > 0 {
+            var bsd = proc_bsdinfo()
+            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0, bsd.pbi_uid == me,
+                  let bytes = procArgs(pid) else { continue }
+            let args = parseProcArgs(bytes).args
+            let exe = executablePath(pid)
+            if (exe ?? args.first ?? "").hasSuffix("/wineserver") {
+                if let folder = currentFolder(pid), folder.contains("/.wine-") {
+                    servers.insert(String(folder.split(separator: "/").last ?? ""))
+                }
+            } else if exe?.hasPrefix(engines) ?? (currentFolder(pid)?.hasPrefix(base) == true),
+                      programName(args.joined(separator: " ")) != nil {
+                programs.append(pid)
+            }
+        }
+        return programs.filter { pid in serverFolder(pid).map { !servers.contains($0) } ?? false }
+    }
+
     static func environment(containing folder: String, root: String) -> String? {
         let base = root.hasSuffix("/") ? root : root + "/"
         guard folder.hasPrefix(base) else { return nil }

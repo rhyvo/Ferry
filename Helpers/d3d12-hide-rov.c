@@ -8,6 +8,8 @@
 
 static HMODULE real;
 static int hideROV = 1;
+static int watchROV = 1;
+static int vsync;
 static volatile LONG reported;
 
 static void note(const char *text) {
@@ -20,6 +22,9 @@ static void note(const char *text) {
     FILE *f = fopen(path, "a");
     if (f) { fprintf(f, "%s\n", text); fclose(f); }
 }
+
+static void vsync_note(const char *text) { note(text); }
+#include "dxgi-vsync-hooks.h"
 
 static FARPROC original(const char *name) {
     static char seen[512];
@@ -184,7 +189,7 @@ static void hookTable(void **table, int newest) {
     devices[i].table = table;
     if (hideROV) {
         devices[i].check = replace(table, 13, (void *)checkFeatureSupport);
-    } else {
+    } else if (watchROV) {
         devices[i].graphics = replace(table, 10, (void *)createGraphics);
         if (newest >= 2) devices[i].stream = replace(table, 47, (void *)createStream);
     }
@@ -208,6 +213,8 @@ static void hookDevice(void *device) {
     }
     hookTable(table, newest);
     LeaveCriticalSection(&lock);
+    static volatile LONG vsyncHooked;
+    if (vsync && !InterlockedExchange(&vsyncHooked, 1)) vsync_hookSystemFactory();
 }
 
 static void **factoryTable;
@@ -289,7 +296,12 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         InitializeCriticalSection(&lock);
         char mode[16];
-        if (GetEnvironmentVariableA("FERRY_ROV_MODE", mode, sizeof mode) && !lstrcmpiA(mode, "watch")) hideROV = 0;
+        if (GetEnvironmentVariableA("FERRY_ROV_MODE", mode, sizeof mode)) {
+            if (!lstrcmpiA(mode, "watch")) hideROV = 0;
+            if (!lstrcmpiA(mode, "off")) hideROV = watchROV = 0;
+        }
+        vsync = GetEnvironmentVariableA("FERRY_VSYNC", mode, sizeof mode) > 0 && !lstrcmpA(mode, "1");
+        vsync_init();
     }
     return TRUE;
 }

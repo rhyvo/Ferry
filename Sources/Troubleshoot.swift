@@ -230,11 +230,10 @@ struct TroubleshootView: View {
     @ViewBuilder
     private func frameLimitStep(_ g: Game, why: String) -> some View {
         let engine = model.resolvedEngine(g)
-        let supported = engine == .dxvk || (engine == .mach9 && g.settings.mach9Direct3D != "wined3d")
-            || (g.settings.dxvkD3D9 && engine != .mach9)
-        if supported {
-            action("Limit the frame rate to 30", detail: why, key: "fps", label: "Set", alreadyOn: g.settings.fpsLimit == 30) {
-                change(g) { $0.settings.fpsLimit = 30 }
+        if model.hasFrameLimiter(g) {
+            action("Limit the frame rate to 30", detail: why + (g.settings.vsync ? " This turns VSync off." : ""), key: "fps",
+                   label: "Set", alreadyOn: g.settings.fpsLimit == 30 && !g.settings.vsync) {
+                change(g) { $0.settings.fpsLimit = 30; $0.settings.vsync = false }
             }
         } else {
             note("Limit the frame rate to 30 in the \(g.noun)'s own graphics settings. \(why) (\(engine.short) has no limiter Ferry can set.)")

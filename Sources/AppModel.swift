@@ -101,6 +101,7 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 8_000_000_000)
             checkForReclaimableStorage()
         }
+        Task { await endLeftoverWine() }
     }
 
     func game(_ id: UUID) -> Game? { games.first { $0.id == id } }
@@ -342,6 +343,11 @@ final class AppModel: ObservableObject {
         if s.fastSync { env["WINEMSYNC"] = "1"; env["WINEESYNC"] = "1" }
         if s.advertiseAVX { env["ROSETTA_ADVERTISE_AVX"] = "1" }
         if s.metalHUD { env["MTL_HUD_ENABLED"] = "1" }
+        let cap = frameCap(g)
+        if s.vsync {
+            env["FERRY_VSYNC"] = "1"
+            env["FERRY_VSYNC_HZ"] = "\(Platform.displayHz)"
+        }
 
         let ownerID = g.sharedWith ?? g.id
         var overrides: String
@@ -355,6 +361,10 @@ final class AppModel: ObservableObject {
             if s.metalHUD { env["DXVK_HUD"] = "fps,devinfo" }
         case .d3dmetal where engine.runtime == .x64:
             overrides = ""
+            if usesVSyncD3D12(g, engine: engine) {
+                overrides = "d3d12=n,b"
+                if !s.hideROV && !watchesForROV(g, engine: engine) { env["FERRY_ROV_MODE"] = "off" }
+            }
             env["GRAPHICS_BACKEND"] = "d3dmetal"
             if s.reportNVIDIA && env["D3DM_DEVICE_DESCRIPTION"] == nil {
                 env["D3DM_DEVICE_DESCRIPTION"] = "NVIDIA GeForce RTX 3060"
@@ -370,6 +380,9 @@ final class AppModel: ObservableObject {
                 env["FERRY_ROV_REPORT"] = "Z:" + rovReportURL(g.id).path.replacingOccurrences(of: "/", with: "\\")
             } else if s.hideROV {
                 overrides = "dxgi,d3d9,d3d10core,d3d11=b;d3d12=n,b"
+            } else if usesVSyncD3D12(g, engine: engine) {
+                overrides = "dxgi,d3d9,d3d10core,d3d11=b;d3d12=n,b"
+                env["FERRY_ROV_MODE"] = "off"
             }
             if s.reportNVIDIA && env["D3DM_DEVICE_DESCRIPTION"] == nil {
                 env["D3DM_DEVICE_DESCRIPTION"] = "NVIDIA GeForce RTX 3060"
@@ -414,21 +427,37 @@ final class AppModel: ObservableObject {
             env["VK_ADD_LAYER_PATH"] = resources
             env["VK_INSTANCE_LAYERS"] = "VK_LAYER_FERRY_moltenvk_features"
         }
+        var dxvkConfig: [String] = []
         if s.dxvkD3D9 && engine != .mach9, let mb = s.dxvkMemoryLimit(macGB: Platform.memoryGB) {
-            env["DXVK_CONFIG"] = "d3d9.maxAvailableMemory = \(mb)"
+            dxvkConfig.append("d3d9.maxAvailableMemory = \(mb)")
         }
-        if drawsCopies(g) && !overrides.contains("d3d9=n,b") {
+        let dxvkDraws = engine == .dxvk || (s.dxvkD3D9 && engine != .mach9) || (engine == .mullion && s.metalSharpBackend == "dxvk")
+        if dxvkDraws, let cap {
+            env["DXVK_FRAME_RATE"] = "\(cap)"
+            dxvkConfig += ["dxgi.maxFrameRate = \(cap)", "d3d9.maxFrameRate = \(cap)"]
+        }
+        if dxvkDraws && s.vsync {
+            dxvkConfig += ["dxgi.syncInterval = 1", "d3d9.presentInterval = 1"]
+        }
+        if !dxvkConfig.isEmpty {
+            let file = bottleURL(ownerID).appendingPathComponent("dxvk.conf")
+            try? (dxvkConfig.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+            env["DXVK_CONFIG_FILE"] = "Z:" + file.path.replacingOccurrences(of: "/", with: "\\")
+        }
+        if engine == .mullion, let cap, ["", "dxmt"].contains(s.metalSharpBackend) {
+            env["MULLION_CONFIG"] = ["d3d11.preferredMaxFrameRate=\(cap)", env["MULLION_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+        }
+        if s.vsync && (engine == .mach9 || env["VK_DRIVER_FILES"] != nil) { env["MESA_VK_WSI_PRESENT_MODE"] = "fifo" }
+        if usesD3D9Helper(g) && !drawsCopies(g) { env["FERRY_D3D9_COPIES"] = "off" }
+        if usesD3D9Helper(g) && !overrides.contains("d3d9=n,b") {
             overrides = overrides.replacingOccurrences(of: "d3d9,", with: "")
             overrides += overrides.isEmpty ? "d3d9=n,b" : ";d3d9=n,b"
         }
-        if drawsCopies(g) && !s.dxvkD3D9 && [EngineID.wined3d, .dxvk, .auto].contains(engine),
+        if usesD3D9Helper(g) && !s.dxvkD3D9 && [EngineID.wined3d, .dxvk, .auto].contains(engine),
            let wine = runtimes.wine(for: .staging, arch: g.arch == .x86 ? .x86 : .x64) {
             let own = wine.deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("lib/wine/\(g.arch == .x86 ? "i386" : "x86_64")-windows/d3d9.dll")
             if fm.exists(own) { env["FERRY_D3D9_NEXT"] = "Z:" + own.path.replacingOccurrences(of: "/", with: "\\") }
-        }
-        if s.fpsLimit > 0 && (engine == .dxvk || (s.dxvkD3D9 && engine != .mach9)) {
-            env["DXVK_FRAME_RATE"] = "\(s.fpsLimit)"
         }
         if [EngineID.wined3d, .dxvk].contains(engine) {
             var d3d: [String] = []
@@ -437,6 +466,7 @@ final class AppModel: ObservableObject {
             if !d3d.isEmpty { env["WINE_D3D_CONFIG"] = d3d.joined(separator: ",") }
         }
 
+        for name in vsyncHelpers(g, engine: engine) { overrides = Self.nativeFirst(name, in: overrides) }
         for o in nativeXAudio2Overrides(g, engine: engine, prefix: prefix) + modOverrides(g) {
             overrides = overrides.isEmpty ? o : overrides + ";" + o
         }
@@ -448,14 +478,15 @@ final class AppModel: ObservableObject {
             }
         }
         if engine == .mach9 {
-            mach9Environment(&env, settings: s, overrides: overrides, graphics: g.graphics, arch: g.arch)
+            mach9Environment(&env, settings: s, frameCap: cap, overrides: overrides, graphics: g.graphics, arch: g.arch)
         } else if !overrides.isEmpty {
             env["WINEDLLOVERRIDES"] = overrides
         }
         return env
     }
 
-    private func mach9Environment(_ env: inout [String: String], settings s: GameSettings, overrides: String, graphics: GraphicsAPI, arch: PEArch) {
+    private func mach9Environment(_ env: inout [String: String], settings s: GameSettings, frameCap cap: Int?, overrides: String,
+                                  graphics: GraphicsAPI, arch: PEArch) {
         env["WINEDLLOVERRIDES"] = nil
         env["WINE_PROF_SERVICE"] = nil
         env["WINEMSYNC"] = s.fastSync ? "1" : "0"
@@ -495,9 +526,12 @@ final class AppModel: ObservableObject {
                 env["MTLD3D_CONFIG"] = ["display.maxResolutions=32", env["MTLD3D_CONFIG"]].compactMap { $0 }.joined(separator: ";")
             }
         }
-        if s.mach9Direct3D != "wined3d" && s.fpsLimit > 0 {
-            env["MTLD3D_CONFIG"] = ["present.maxFps=\(s.fpsLimit)", env["MTLD3D_CONFIG"]].compactMap { $0 }.joined(separator: ";")
-            env["DXMT_CONFIG"] = ["d3d11.preferredMaxFrameRate=\(s.fpsLimit)", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+        if s.mach9Direct3D != "wined3d", let cap {
+            env["MTLD3D_CONFIG"] = ["present.maxFps=\(cap)", env["MTLD3D_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+            env["DXMT_CONFIG"] = ["d3d11.preferredMaxFrameRate=\(cap)", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+        }
+        if s.mach9Direct3D != "wined3d" && s.vsync {
+            env["DXMT_CONFIG"] = ["dxgi.vsync=on", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
         }
         if s.mach9Direct3D != "wined3d" && s.metalFX {
             if graphics == .dx9 {
@@ -652,6 +686,7 @@ final class AppModel: ObservableObject {
                 syncD3DMetal(p)
                 applyDrawCopies(p)
                 applyHideROV(p)
+                applyVSyncHelpers(p)
                 let ready = withWebView2(p)
                 await watchInstaller(p)
                 status = "Starting \(p.game.name)…"
@@ -670,10 +705,15 @@ final class AppModel: ObservableObject {
               [.dx12, .unknown].contains(g.graphics), g.exePath.lowercased().hasSuffix(".exe") else { return false }
         let dir = URL(fileURLWithPath: g.exePath).deletingLastPathComponent()
         if modOwning(dir.appendingPathComponent("d3d12.dll"), in: g) != nil { return false }
+        return !hasAntiCheat(g)
+    }
+
+    func hasAntiCheat(_ g: Game) -> Bool {
+        let dir = URL(fileURLWithPath: g.exePath).deletingLastPathComponent()
         let names = ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? [])
             + ((try? fm.contentsOfDirectory(atPath: dir.deletingLastPathComponent().path)) ?? [])
         let antiCheat = ["easyanticheat", "battleye", "beservice", "vgk", "xigncode", "gameguard", "eaanticheat", "ace-base"]
-        return !names.contains { name in antiCheat.contains { name.lowercased().contains($0) } }
+        return names.contains { name in antiCheat.contains { name.lowercased().contains($0) } }
     }
 
     private func checkROVReport(_ id: UUID) {
@@ -689,7 +729,7 @@ final class AppModel: ObservableObject {
         guard var g = game(p.game.id) else { return }
         let target = URL(fileURLWithPath: g.exePath).deletingLastPathComponent().appendingPathComponent("d3d12.dll")
         guard let helper = Bundle.main.url(forResource: "d3d12-hide-rov", withExtension: "dll") else { return }
-        if (g.settings.hideROV || watchesForROV(g, engine: p.engine)) && p.engine == .d3dmetal {
+        if (g.settings.hideROV || watchesForROV(g, engine: p.engine) || usesVSyncD3D12(g, engine: p.engine)) && p.engine == .d3dmetal {
             if g.settings.hideROV, let mod = modOwning(target, in: g) {
                 noteModOwns(target, mod, setting: "Hide ROV support", game: g)
                 return
@@ -702,7 +742,9 @@ final class AppModel: ObservableObject {
             let ours = fm.contentsEqual(atPath: target.path, andPath: helper.path)
             if ours && g.hideROVPlaced == target.path { return }
             if fm.exists(target) && !ours {
-                errorMessage = "\(g.name) comes with its own d3d12.dll, so Ferry can't add its ROV helper there. Hide ROV support is off for this game."
+                if g.settings.hideROV {
+                    errorMessage = "\(g.name) comes with its own d3d12.dll, so Ferry can't add its ROV helper there. Hide ROV support is off for this game."
+                }
                 return
             }
             fm.removeIfPresent(target)
@@ -721,7 +763,7 @@ final class AppModel: ObservableObject {
     private func applyDXVKD3D9(_ p: PreparedGame) async {
         guard var g = game(p.game.id) else { return }
         let target = URL(fileURLWithPath: g.exePath).deletingLastPathComponent()
-            .appendingPathComponent(drawsCopies(g) ? "d3d9-dxvk.dll" : "d3d9.dll")
+            .appendingPathComponent(usesD3D9Helper(g) ? "d3d9-dxvk.dll" : "d3d9.dll")
         if g.settings.dxvkD3D9 && p.engine != .mach9 && !usesBundledDXVK(g, engine: p.engine) {
             if let mod = modOwning(target, in: g) {
                 noteModOwns(target, mod, setting: "DirectX 9 via DXVK", game: g)
@@ -781,6 +823,80 @@ final class AppModel: ObservableObject {
         g.settings.drawCopies ?? (g.graphics == .dx9 || (g.framework == "Clickteam Fusion" && g.graphics == .unknown))
     }
 
+    func usesD3D9Helper(_ g: Game) -> Bool {
+        drawsCopies(g) || (g.settings.vsync && g.graphics == .dx9)
+    }
+
+    func frameCap(_ g: Game) -> Int? {
+        if g.settings.vsync { return Platform.displayHz }
+        return g.settings.fpsLimit > 0 ? g.settings.fpsLimit : nil
+    }
+
+    func hasFrameLimiter(_ g: Game) -> Bool {
+        let engine = resolvedEngine(g), s = g.settings
+        if engine == .dxvk || (s.dxvkD3D9 && engine != .mach9) { return true }
+        if engine == .mach9 { return s.mach9Direct3D != "wined3d" }
+        if engine == .mullion { return [.dx10, .dx11, .dx12].contains(g.graphics) && ["", "dxvk"].contains(s.metalSharpBackend) }
+        return false
+    }
+
+    func vsyncHelpers(_ g: Game, engine: EngineID) -> [String] {
+        guard g.settings.vsync, g.sharedWith == nil, g.exePath.lowercased().hasSuffix(".exe"), !hasAntiCheat(g) else { return [] }
+        switch engine {
+        case .d3dmetal: return [.dx10, .dx11, .unknown].contains(g.graphics) ? ["d3d11"] : []
+        case .wined3d, .auto: return [.dx10, .dx11, .dx12, .unknown].contains(g.graphics) ? ["dxgi"] : []
+        default: return []
+        }
+    }
+
+    func usesVSyncD3D12(_ g: Game, engine: EngineID) -> Bool {
+        guard engine == .d3dmetal, g.settings.vsync, g.sharedWith == nil, g.exePath.lowercased().hasSuffix(".exe"),
+              [.dx12, .unknown].contains(g.graphics) else { return false }
+        return !hasAntiCheat(g)
+    }
+
+    static func nativeFirst(_ name: String, in overrides: String) -> String {
+        var groups: [String] = overrides.split(separator: ";").compactMap { group in
+            let parts = group.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { return String(group) }
+            let dlls = parts[0].split(separator: ",").filter { $0 != name }
+            return dlls.isEmpty ? nil : dlls.joined(separator: ",") + "=" + parts[1]
+        }
+        groups.append("\(name)=n,b")
+        return groups.joined(separator: ";")
+    }
+
+    private func vsyncHelper(_ arch: PEArch) -> URL? {
+        Bundle.main.url(forResource: arch == .x86 ? "dxgi-vsync-x86" : "dxgi-vsync-x64", withExtension: "dll")
+    }
+
+    private func applyVSyncHelpers(_ p: PreparedGame) {
+        guard var g = game(p.game.id) else { return }
+        let dir = URL(fileURLWithPath: g.exePath).deletingLastPathComponent()
+        let wanted = Set(vsyncHelpers(g, engine: p.engine))
+        var placed = g.vsyncPlaced
+        for name in ["dxgi", "d3d11"] {
+            let target = dir.appendingPathComponent("\(name).dll")
+            let ours = placed.contains(target.path)
+            if wanted.contains(name), let helper = vsyncHelper(g.arch), modOwning(target, in: g) == nil {
+                if fm.contentsEqual(atPath: target.path, andPath: helper.path) {
+                    if !ours { placed.append(target.path) }
+                    continue
+                }
+                if fm.exists(target) && !ours { continue }
+                fm.removeIfPresent(target)
+                if (try? fm.copyItem(at: helper, to: target)) != nil, !ours { placed.append(target.path) }
+            } else if ours {
+                if modOwning(target, in: g) == nil { fm.removeIfPresent(target) }
+                placed.removeAll { $0 == target.path }
+            }
+        }
+        if placed != g.vsyncPlaced {
+            g.vsyncPlaced = placed
+            update(g)
+        }
+    }
+
     private func drawCopiesHelper(_ arch: PEArch) -> URL? {
         Bundle.main.url(forResource: arch == .x86 ? "d3d9-ferry-x86" : "d3d9-ferry-x64", withExtension: "dll")
     }
@@ -804,7 +920,7 @@ final class AppModel: ObservableObject {
     private func applyDrawCopies(_ p: PreparedGame) {
         guard var g = game(p.game.id), let helper = drawCopiesHelper(g.arch) else { return }
         let target = URL(fileURLWithPath: g.exePath).deletingLastPathComponent().appendingPathComponent("d3d9.dll")
-        if drawsCopies(g) {
+        if usesD3D9Helper(g) {
             if let mod = modOwning(target, in: g) {
                 if g.settings.drawCopies == true { noteModOwns(target, mod, setting: "Faster screen copies", game: g) }
                 return
@@ -953,9 +1069,22 @@ final class AppModel: ObservableObject {
         return "Z:" + dir.replacingOccurrences(of: "/", with: "\\")
     }
 
+    func endLeftoverWine() async {
+        let root = Paths.root.path
+        let pids = await Task.detached { TaskList.leftovers(root: root) }.value
+        guard !pids.isEmpty else { return }
+        for pid in pids { kill(pid, SIGTERM) }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        for pid in pids where kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+    }
+
     private func gameEnded(_ id: UUID, status: Int32, seconds: TimeInterval, engine: EngineID) {
         helpers.removeValue(forKey: id)?.terminate()
         running.remove(id)
+        Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            await endLeftoverWine()
+        }
         checkROVReport(id)
         discordGameEnded(id)
         let stoppedByUser = stopping.remove(id) != nil

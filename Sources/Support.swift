@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 enum Platform {
     static var metalSharpRuns32bit: Bool {
@@ -8,6 +8,11 @@ enum Platform {
     static var mach9Available: Bool { metalSharpRuns32bit }
 
     static var memoryGB: Int { Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) }
+
+    @MainActor static var displayHz: Int {
+        let hz = NSScreen.screens.first?.maximumFramesPerSecond ?? 60
+        return hz >= 24 ? hz : 60
+    }
 }
 
 struct FerryError: LocalizedError {

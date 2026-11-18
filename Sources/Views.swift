@@ -647,26 +647,30 @@ struct FrameLimitPicker: View {
     @EnvironmentObject var model: AppModel
     @Binding var game: Game
 
-    private var supported: Bool {
-        let engine = model.resolvedEngine(game)
-        return engine == .dxvk || (engine == .mach9 && game.settings.mach9Direct3D != "wined3d")
-            || (game.settings.dxvkD3D9 && engine != .mach9)
-    }
-
     var body: some View {
-        if supported {
-            Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
-                Text("Off").tag(0)
-                ForEach([30, 40, 45, 60, 90, 120], id: \.self) { Text("\($0) FPS").tag($0) }
+        let vsync = game.settings.vsync
+        Group {
+            if model.hasFrameLimiter(game) {
+                Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
+                    Text("Off").tag(0)
+                    ForEach([30, 40, 45, 60, 90, 120], id: \.self) { Text("\($0) FPS").tag($0) }
+                }
+                .help(vsync
+                      ? "VSync is on, so the frame rate follows the display. Turn VSync off to pick a limit."
+                      : "Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery. Use the \(game.noun)'s own limiter if it has one.")
+            } else {
+                LabeledContent("Frame rate limit") {
+                    Text("Use the \(game.noun)'s own setting (\(model.resolvedEngine(game).short) has no limiter)")
+                        .foregroundStyle(.secondary)
+                }
+                .help(vsync
+                      ? "VSync is on, so the frame rate follows the display."
+                      : "This engine has no frame rate limiter of its own. Use the \(game.noun)'s setting instead.")
             }
-            .help("Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery. Use the game's own limiter if it has one.")
-        } else {
-            LabeledContent("Frame rate limit") {
-                Text("Use the game's own setting (\(model.resolvedEngine(game).short) has no limiter)")
-                    .foregroundStyle(.secondary)
-            }
-            .help("This engine has no frame rate limiter of its own. Use the game's setting instead.")
         }
+        .disabled(vsync)
+        Toggle("VSync", isOn: $game.settings.vsync)
+            .help("Shows each frame in step with the display's refresh, so the picture doesn't tear (a frame showing partway through another), and keeps the \(game.noun) from drawing more frames than the display can show: \(Platform.displayHz) a second on this Mac's display. The time it would spend on frames you never see goes to the \(game.noun) and macOS instead, and the Mac runs cooler. Every engine caps the frame rate; Mullion's DirectX 10–12 can still tear. Turn it off for the highest frame rate and lowest input delay, or to use a frame rate limit.")
     }
 }
 
@@ -1301,6 +1305,7 @@ struct DefaultSettings: View {
     @AppStorage("defaultAVX") private var avx = true
     @AppStorage("defaultRetina") private var retina = false
     @AppStorage("defaultMetalFX") private var metalFX = false
+    @AppStorage("defaultVSync") private var vsync = true
     @AppStorage("defaultCommandIsCtrl") private var commandIsCtrl = false
     @AppStorage("discordPresence") private var discordPresence = true
     @AppStorage("discordFallbackID") private var discordFallbackID = ""
@@ -1379,6 +1384,8 @@ struct DefaultSettings: View {
                     .help("Renders at the display's full pixel resolution. Sharper, but slower.")
                 Toggle("DLSS → MetalFX upscaling", isOn: $metalFX)
                     .help("Lets games that offer NVIDIA DLSS use Apple's MetalFX upscaling instead (D3DMetal), and upscales with MetalFX on Mach9.")
+                Toggle("VSync", isOn: $vsync)
+                    .help("Shows each frame in step with the display's refresh, so the picture doesn't tear, and keeps games from drawing more frames than the display can show (\(Platform.displayHz) a second on this Mac's display). The time they'd spend on frames you never see goes to the game and macOS instead: cooler, quieter, and longer on battery.")
                 Toggle("⌘ Command as Ctrl", isOn: $commandIsCtrl)
                     .help("Command works as Ctrl in games, so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
             } header: {

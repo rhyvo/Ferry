@@ -7,9 +7,10 @@
 #include <d3d9.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include "vsync-pace.h"
 
 static HMODULE self, real;
-static int logging, enabled = 1;
+static int logging, enabled = 1, vsync;
 static volatile LONG converted, passed;
 
 static void note(const char *format, ...) {
@@ -53,6 +54,8 @@ static FARPROC original(const char *name) {
 typedef HRESULT (WINAPI *StretchRectFn)(IDirect3DDevice9 *, IDirect3DSurface9 *, const RECT *, IDirect3DSurface9 *,
                                         const RECT *, D3DTEXTUREFILTERTYPE);
 typedef HRESULT (WINAPI *ResetFn)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
+typedef HRESULT (WINAPI *PresentFn)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
+typedef HRESULT (WINAPI *PresentExFn)(IDirect3DDevice9Ex *, const RECT *, const RECT *, HWND, const RGNDATA *, DWORD);
 typedef HRESULT (WINAPI *ResetExFn)(IDirect3DDevice9Ex *, D3DPRESENT_PARAMETERS *, D3DDISPLAYMODEEX *);
 typedef HRESULT (WINAPI *CreateDeviceFn)(IDirect3D9 *, UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *,
                                          IDirect3DDevice9 **);
@@ -60,7 +63,9 @@ typedef HRESULT (WINAPI *CreateDeviceExFn)(IDirect3D9Ex *, UINT, D3DDEVTYPE, HWN
                                            D3DDISPLAYMODEEX *, IDirect3DDevice9Ex **);
 
 #define TABLES 8
-static struct { void *table; StretchRectFn stretchRect; ResetFn reset; ResetExFn resetEx; } devices[TABLES];
+static struct {
+    void *table; StretchRectFn stretchRect; ResetFn reset; ResetExFn resetEx; PresentFn present; PresentExFn presentEx;
+} devices[TABLES];
 static struct { void *table; CreateDeviceFn createDevice; CreateDeviceExFn createDeviceEx; } factories[TABLES];
 
 static void patch(void **slot, void *hook, void **saved) {
@@ -297,10 +302,32 @@ static void forget(IDirect3DDevice9 *d) {
     }
 }
 
+static void syncToDisplay(D3DPRESENT_PARAMETERS *params) {
+    if (!vsync || !params || params->PresentationInterval != D3DPRESENT_INTERVAL_IMMEDIATE) return;
+    params->PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+    note("the game presents without VSync; turning it on");
+}
+
+static HRESULT WINAPI hookPresent(IDirect3DDevice9 *d, const RECT *from, const RECT *to, HWND window, const RGNDATA *dirty) {
+    int i = deviceTable(d);
+    if (i < 0) return D3DERR_INVALIDCALL;
+    vsync_pace();
+    return devices[i].present(d, from, to, window, dirty);
+}
+
+static HRESULT WINAPI hookPresentEx(IDirect3DDevice9Ex *d, const RECT *from, const RECT *to, HWND window,
+                                    const RGNDATA *dirty, DWORD flags) {
+    int i = deviceTable(d);
+    if (i < 0) return D3DERR_INVALIDCALL;
+    if (!(flags & D3DPRESENT_DONOTWAIT)) vsync_pace();
+    return devices[i].presentEx(d, from, to, window, dirty, flags);
+}
+
 static HRESULT WINAPI hookReset(IDirect3DDevice9 *d, D3DPRESENT_PARAMETERS *params) {
     int i = deviceTable(d);
     if (i < 0) return D3DERR_INVALIDCALL;
     forget(d);
+    syncToDisplay(params);
     return devices[i].reset(d, params);
 }
 
@@ -308,6 +335,7 @@ static HRESULT WINAPI hookResetEx(IDirect3DDevice9Ex *d, D3DPRESENT_PARAMETERS *
     int i = deviceTable(d);
     if (i < 0) return D3DERR_INVALIDCALL;
     forget((IDirect3DDevice9 *)d);
+    syncToDisplay(params);
     return devices[i].resetEx(d, params, mode);
 }
 
@@ -315,20 +343,23 @@ static void hookDevice(IDirect3DDevice9 *d) {
     if (deviceTable(d) >= 0) return;
     int i = newSlot(d, 1);
     if (i < 0) return;
-    patch((void **)&d->lpVtbl->StretchRect, hookStretchRect, (void **)&devices[i].stretchRect);
+    if (enabled) patch((void **)&d->lpVtbl->StretchRect, hookStretchRect, (void **)&devices[i].stretchRect);
     patch((void **)&d->lpVtbl->Reset, hookReset, (void **)&devices[i].reset);
+    if (vsync) patch((void **)&d->lpVtbl->Present, hookPresent, (void **)&devices[i].present);
     IDirect3DDevice9Ex *ex = NULL;
     if (SUCCEEDED(IDirect3DDevice9_QueryInterface(d, &IID_IDirect3DDevice9Ex, (void **)&ex)) && ex) {
         patch((void **)&ex->lpVtbl->ResetEx, hookResetEx, (void **)&devices[i].resetEx);
+        if (vsync) patch((void **)&ex->lpVtbl->PresentEx, hookPresentEx, (void **)&devices[i].presentEx);
         IDirect3DDevice9Ex_Release(ex);
     }
-    note("watching the game's DirectX 9 device for copies");
+    note(enabled ? "watching the game's DirectX 9 device for copies" : "watching the game's DirectX 9 device");
 }
 
 static HRESULT WINAPI hookCreateDevice(IDirect3D9 *f, UINT adapter, D3DDEVTYPE type, HWND window, DWORD flags,
                                        D3DPRESENT_PARAMETERS *params, IDirect3DDevice9 **out) {
     int i = factoryTable(f);
     if (i < 0) return D3DERR_INVALIDCALL;
+    syncToDisplay(params);
     HRESULT hr = factories[i].createDevice(f, adapter, type, window, flags, params, out);
     if (SUCCEEDED(hr) && out && *out) hookDevice(*out);
     return hr;
@@ -338,13 +369,14 @@ static HRESULT WINAPI hookCreateDeviceEx(IDirect3D9Ex *f, UINT adapter, D3DDEVTY
                                          D3DPRESENT_PARAMETERS *params, D3DDISPLAYMODEEX *mode, IDirect3DDevice9Ex **out) {
     int i = factoryTable(f);
     if (i < 0) return D3DERR_INVALIDCALL;
+    syncToDisplay(params);
     HRESULT hr = factories[i].createDeviceEx(f, adapter, type, window, flags, params, mode, out);
     if (SUCCEEDED(hr) && out && *out) hookDevice((IDirect3DDevice9 *)*out);
     return hr;
 }
 
 static void hookFactory(IDirect3D9 *f, int isEx) {
-    if (!f || !enabled) return;
+    if (!f || !(enabled || vsync)) return;
     int i = factoryTable(f);
     if (i < 0 && (i = newSlot(f, 0)) < 0) return;
     patch((void **)&f->lpVtbl->CreateDevice, hookCreateDevice, (void **)&factories[i].createDevice);
@@ -430,6 +462,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         char value[16];
         logging = GetEnvironmentVariableA("FERRY_D3D9_LOG", value, sizeof value) > 0;
         if (GetEnvironmentVariableA("FERRY_D3D9_COPIES", value, sizeof value) > 0 && !lstrcmpiA(value, "off")) enabled = 0;
+        vsync = GetEnvironmentVariableA("FERRY_VSYNC", value, sizeof value) > 0 && !lstrcmpA(value, "1");
         DisableThreadLibraryCalls(instance);
     } else if (reason == DLL_PROCESS_DETACH && (converted || passed)) {
         note("finished: drew %ld copies, passed %ld on", converted, passed);

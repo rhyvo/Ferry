@@ -1,0 +1,12 @@
+LIBRARY dxgi.dll
+EXPORTS
+    CreateDXGIFactory=ferry_CreateDXGIFactory@8
+    CreateDXGIFactory1=ferry_CreateDXGIFactory1@8
+    CreateDXGIFactory2=ferry_CreateDXGIFactory2@12
+    DXGIGetDebugInterface1=ferry_DXGIGetDebugInterface1@12
+    DXGIDeclareAdapterRemovalSupport=ferry_DXGIDeclareAdapterRemovalSupport@0
+    DXGID3D10CreateDevice=ferry_DXGID3D10CreateDevice@28
+    DXGID3D10RegisterLayers=ferry_DXGID3D10RegisterLayers@8
+    D3D11CreateDevice=ferry_D3D11CreateDevice@40
+    D3D11CreateDeviceAndSwapChain=ferry_D3D11CreateDeviceAndSwapChain@48
+    D3D11On12CreateDevice=ferry_D3D11On12CreateDevice@40

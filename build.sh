@@ -22,6 +22,7 @@ cp Info.plist "$APP/Contents/Info.plist"
 cp Resources/ferry-winbuttons.exe "$APP/Contents/Resources/"
 cp Resources/d3d12-hide-rov.dll "$APP/Contents/Resources/"
 cp Resources/d3d9-ferry-x86.dll Resources/d3d9-ferry-x64.dll "$APP/Contents/Resources/"
+cp Resources/dxgi-vsync-x86.dll Resources/dxgi-vsync-x64.dll "$APP/Contents/Resources/"
 cp Resources/ferry-vk-layer.json Resources/libferry_vk_layer.dylib "$APP/Contents/Resources/"
 
 echo "Making the icon…"

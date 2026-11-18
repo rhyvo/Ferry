@@ -269,10 +269,16 @@ extension AppModel {
     func applyMod(_ prep: ModPreparation, to gameID: UUID) async throws -> InstalledMod {
         modWorkInFlight += 1
         defer { status = nil; modWorkInFlight -= 1 }
-        guard let g = game(gameID) else { throw FerryError("That game isn't in the library anymore.") }
+        guard var g = game(gameID) else { throw FerryError("That game isn't in the library anymore.") }
         try requireModsIdle(g)
         switch prep {
         case .ready(let plan, _, let name, let source, _):
+            let replaced = g.vsyncPlaced.filter { placed in plan.copies.contains { ModLayout.samePath(URL(fileURLWithPath: placed), $0.to) } }
+            if !replaced.isEmpty {
+                for placed in replaced { fm.removeIfPresent(URL(fileURLWithPath: placed)) }
+                g.vsyncPlaced.removeAll { replaced.contains($0) }
+                update(g)
+            }
             let ferrysOwn = [(g.cncDdrawPlaced, "DirectDraw compatibility (cnc-ddraw)"),
                              (g.dxvkD3D9Placed, "DirectX 9 via DXVK"), (g.hideROVPlaced, "Hide ROV support"),
                              (g.drawCopiesPlaced, "Faster screen copies")]

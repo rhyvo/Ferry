@@ -153,6 +153,7 @@ struct GameSettings: Codable, Equatable {
     var fullMemory32: Bool = true
     var macFullScreenButton: Bool = true
     var fpsLimit: Int = 0
+    var vsync: Bool = true
     var reportNVIDIA: Bool = false { didSet { if !reportNVIDIA { hideROV = false } } }
     var hideROV: Bool = false { didSet { if hideROV { reportNVIDIA = true } } }
     var dxvkD3D9: Bool = false
@@ -172,6 +173,7 @@ struct GameSettings: Codable, Equatable {
         s.retina = d.object(forKey: "defaultRetina") as? Bool ?? false
         s.metalFX = d.object(forKey: "defaultMetalFX") as? Bool ?? false
         s.commandIsCtrl = d.object(forKey: "defaultCommandIsCtrl") as? Bool ?? false
+        s.vsync = d.object(forKey: "defaultVSync") as? Bool ?? true
         return s
     }
 }
@@ -205,6 +207,7 @@ extension GameSettings {
         fullMemory32 = (try? c.decodeIfPresent(Bool.self, forKey: .fullMemory32)) ?? d.fullMemory32
         macFullScreenButton = (try? c.decodeIfPresent(Bool.self, forKey: .macFullScreenButton)) ?? d.macFullScreenButton
         fpsLimit = (try? c.decodeIfPresent(Int.self, forKey: .fpsLimit)) ?? d.fpsLimit
+        vsync = (try? c.decodeIfPresent(Bool.self, forKey: .vsync)) ?? d.vsync
         hideROV = (try? c.decodeIfPresent(Bool.self, forKey: .hideROV)) ?? d.hideROV
         reportNVIDIA = (try? c.decodeIfPresent(Bool.self, forKey: .reportNVIDIA)) ?? hideROV
         dxvkD3D9 = (try? c.decodeIfPresent(Bool.self, forKey: .dxvkD3D9)) ?? d.dxvkD3D9
@@ -234,6 +237,7 @@ struct Game: Codable, Identifiable, Equatable {
     var dxvkD3D9Placed: String? = nil
     var hideROVPlaced: String? = nil
     var drawCopiesPlaced: String? = nil
+    var vsyncPlaced: [String] = []
     var rovSeen: Bool = false
     var rovWatchLaunches: Int = 0
     var iconMode: IconMode = .auto
@@ -259,6 +263,7 @@ extension Game {
         dxvkD3D9Placed = try? c.decodeIfPresent(String.self, forKey: .dxvkD3D9Placed)
         hideROVPlaced = try? c.decodeIfPresent(String.self, forKey: .hideROVPlaced)
         drawCopiesPlaced = try? c.decodeIfPresent(String.self, forKey: .drawCopiesPlaced)
+        vsyncPlaced = (try? c.decodeIfPresent([String].self, forKey: .vsyncPlaced)) ?? []
         rovSeen = (try? c.decodeIfPresent(Bool.self, forKey: .rovSeen)) ?? false
         rovWatchLaunches = (try? c.decodeIfPresent(Int.self, forKey: .rovWatchLaunches)) ?? 0
         iconMode = (try? c.decodeIfPresent(IconMode.self, forKey: .iconMode)) ?? .auto
