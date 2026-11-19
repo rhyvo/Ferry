@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/rhyvo/Ferry/releases"><img src="https://img.shields.io/github/downloads/rhyvo/Ferry/total?label=downloads&color=2ea44f&style=for-the-badge" alt="Total downloads"></a>
+</p>
+
+<p align="center">
   <img src="media/ferry-demo.gif" alt="Ferry's library, game settings, engines, components, Task Manager and Storage" width="100%">
 </p>
 
