@@ -68,6 +68,9 @@ extension AppModel {
             "",
             "[HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Hardware Profiles\\Current\\Software\\Fonts]",
             "\"LogPixels\"=\(logPixels)",
+            "",
+            "[HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\winebus]",
+            "\"DisableHidraw\"=dword:00000001",
         ] + (kind == .mach9 ? [
             "",
             "[HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver]",

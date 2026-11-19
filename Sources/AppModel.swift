@@ -333,6 +333,11 @@ final class AppModel: ObservableObject {
         env["WINEPREFIX"] = prefix.path
         env["WINEDEBUG"] = "-all"
         env["WINEBOOT_HIDE_DIALOG"] = "1"
+        if prefix.lastPathComponent.hasPrefix("windows-\(RuntimeKind.x64.rawValue)"),
+           let lib = runtimes.binDir(.x64)?.deletingLastPathComponent().appendingPathComponent("lib", isDirectory: true),
+           fm.exists(lib.appendingPathComponent("libSDL2-2.0.0.dylib")) {
+            env["DYLD_FALLBACK_LIBRARY_PATH"] = [lib.path, env["DYLD_FALLBACK_LIBRARY_PATH"] ?? "/usr/local/lib:/usr/lib"].joined(separator: ":")
+        }
         return env
     }
 
@@ -625,11 +630,11 @@ final class AppModel: ObservableObject {
         }
 
         let dpi = g.settings.windowsDPI(graphics: g.graphics)
-        let signature = g.settings.registrySignature + "|dpi\(dpi)" + (kind == .mach9 ? "|virtual-modes" : "")
+        let signature = g.settings.registrySignature + "|dpi\(dpi)" + (kind == .mach9 ? "|virtual-modes" : "") + "|pads-as-xbox"
         if g.applied[kind.rawValue] != signature {
             status = "Applying settings…"
             await applyWindowsSettings(g.settings, wine: wine, env: env, prefix: prefix, log: setupLog, kind: kind, dpi: dpi)
-            if kind == .mach9, !running.contains(where: { prefixURL($0, kind) == prefix }),
+            if !running.contains(where: { prefixURL($0, kind) == prefix }),
                let server = runtimes.wineserver(for: kind) {
                 await Shell.run(server.path, ["-k"], env: env, log: setupLog)
             }
