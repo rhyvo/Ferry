@@ -61,6 +61,8 @@ final class AppModel: ObservableObject {
     var buildStatus: [RuntimeKind: String] = [:]
 
     @Published var showUpdatePrompt = false
+    @Published var ferryUpdate: String? = nil
+    @Published var ferryUpdateHidden = false
     @Published var updating = false
     @Published var noticeMessage: String? = nil
     var promptedForUpdates: Set<String> = []

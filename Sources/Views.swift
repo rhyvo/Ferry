@@ -19,6 +19,10 @@ struct ContentView: View {
 
     private var library: some View {
         VStack(spacing: 0) {
+            if model.ferryUpdate != nil && !model.ferryUpdateHidden {
+                FerryUpdateBanner()
+                    .padding([.horizontal, .top], 16)
+            }
             if !runtimes.availableUpdates.isEmpty && !model.updating {
                 UpdateBanner()
                     .padding([.horizontal, .top], 16)
@@ -250,7 +254,7 @@ struct LibraryUpdateBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "shippingbox.fill")
+            Image(systemName: "sparkles")
                 .font(.title3)
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
@@ -275,7 +279,7 @@ struct UpdateBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "arrow.down.circle.fill")
+            Image(systemName: "sparkles")
                 .font(.title3)
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 1) {
@@ -288,6 +292,33 @@ struct UpdateBanner: View {
             Spacer()
             Button("Update") { model.installUpdates() }
                 .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.tint.opacity(0.12)))
+    }
+}
+
+struct FerryUpdateBanner: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.title3)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Ferry \(model.ferryUpdate ?? "") is available").font(.callout.weight(.semibold))
+                Text("You have \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "an older version"). Download it and drag it into Applications; your games and settings are kept.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Not Now") { model.ferryUpdateHidden = true }
+                .help("Hide this until Ferry next opens")
+            Button("Download") { NSWorkspace.shared.open(AppModel.releasesPage) }
+                .buttonStyle(.borderedProminent)
+                .help("Open the new version's page on GitHub")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.tint.opacity(0.12)))
@@ -1169,6 +1200,7 @@ struct EngineSettings: View {
     @EnvironmentObject var runtimes: RuntimeManager
     @State private var error: String? = nil
     @AppStorage("autoUpdateCheck") private var autoUpdateCheck = true
+    @AppStorage("checkOnLaunch") private var checkOnLaunch = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1191,8 +1223,10 @@ struct EngineSettings: View {
                                 .disabled(busy)
                         }
                     }
-                    Toggle("Check for updates daily", isOn: $autoUpdateCheck)
-                        .help("Checks for new versions of Ferry's engines and components once a day and tells you when updates are available.")
+                    Toggle("Check for updates automatically", isOn: $autoUpdateCheck)
+                        .help("Checks for new versions of Ferry and its engines and components once a day, and tells you when updates are available.")
+                    Toggle("Check for updates when Ferry opens", isOn: $checkOnLaunch)
+                        .help("Checks for new versions of Ferry and its engines and components each time Ferry opens, so updates show up as soon as they're out.")
                 } header: {
                     Text("Updates")
                 }

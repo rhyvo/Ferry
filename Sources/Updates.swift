@@ -3,21 +3,29 @@ import Foundation
 extension AppModel {
     func startUpdateChecks() {
         Task {
+            var opening = true
             while true {
-                await checkForUpdatesIfDue()
+                await checkForUpdatesIfDue(opening: opening)
+                opening = false
                 try? await Task.sleep(nanoseconds: 3_600 * 1_000_000_000)
             }
         }
     }
 
-    private func checkForUpdatesIfDue() async {
+    private func checkForUpdatesIfDue(opening: Bool) async {
         guard setupComplete, !setupRunning, !updating else { return }
-        guard UserDefaults.standard.object(forKey: "autoUpdateCheck") as? Bool ?? true else { return }
+        let defaults = UserDefaults.standard
+        let daily = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
+        let onOpen = opening && (defaults.object(forKey: "checkOnLaunch") as? Bool ?? true)
         let dayAgo = Date().addingTimeInterval(-24 * 3600)
-        if (runtimes.lastUpdateCheck ?? .distantPast) < dayAgo {
-            await runtimes.checkForUpdates()
-        }
+        if onOpen || (daily && (lastFerryCheck ?? .distantPast) < dayAgo) { await checkFerryVersion() }
+        if onOpen || (daily && (runtimes.lastUpdateCheck ?? .distantPast) < dayAgo) { await runtimes.checkForUpdates() }
         promptIfNew()
+    }
+
+    var lastFerryCheck: Date? {
+        get { UserDefaults.standard.object(forKey: "lastFerryCheck") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastFerryCheck") }
     }
 
     private func promptIfNew() {
@@ -35,16 +43,38 @@ extension AppModel {
             return
         }
         Task {
+            await checkFerryVersion()
+            ferryUpdateHidden = false
             guard await runtimes.checkForUpdates() else {
                 errorMessage = "Couldn't reach GitHub to check for updates. Check your internet connection and try again."
                 return
             }
             if runtimes.availableUpdates.isEmpty {
-                noticeMessage = "Everything is up to date."
+                noticeMessage = ferryUpdate.map { "Ferry \($0) is available. Download it from the banner at the top of Ferry's window." }
+                    ?? "Everything is up to date."
             } else {
                 showUpdatePrompt = true
             }
         }
+    }
+
+    static let releasesPage = URL(string: "https://github.com/rhyvo/Ferry/releases/latest")!
+
+    func checkFerryVersion() async {
+        guard let (tag, _) = try? await GitHub.latestAssets(repo: "rhyvo/Ferry"), !tag.isEmpty else { return }
+        lastFerryCheck = Date()
+        let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        let mine = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        ferryUpdate = Self.isNewer(latest, than: mine) ? latest : nil
+    }
+
+    static func isNewer(_ a: String, than b: String) -> Bool {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+            if p != q { return p > q }
+        }
+        return false
     }
 
     var updateSummary: String {
