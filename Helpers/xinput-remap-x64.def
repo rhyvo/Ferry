@@ -1,0 +1,16 @@
+LIBRARY xinput1_3.dll
+EXPORTS
+    XInputGetState=ferry_XInputGetState @2
+    XInputSetState=ferry_XInputSetState @3
+    XInputGetCapabilities=ferry_XInputGetCapabilities @4
+    XInputEnable=ferry_XInputEnable @5
+    XInputGetDSoundAudioDeviceGuids=ferry_XInputGetDSoundAudioDeviceGuids @6
+    XInputGetBatteryInformation=ferry_XInputGetBatteryInformation @7
+    XInputGetKeystroke=ferry_XInputGetKeystroke @8
+    XInputGetAudioDeviceIds=ferry_XInputGetAudioDeviceIds @10
+    XInputGetStateEx=ferry_XInputGetStateEx @100 NONAME
+    XInputWaitForGuideButton=ferry_XInputWaitForGuideButton @101 NONAME
+    XInputCancelGuideButtonWait=ferry_XInputCancelGuideButtonWait @102 NONAME
+    XInputPowerOffController=ferry_XInputPowerOffController @103 NONAME
+    XInputGetBaseBusInformation=ferry_XInputGetBaseBusInformation @104 NONAME
+    XInputGetCapabilitiesEx=ferry_XInputGetCapabilitiesEx @108 NONAME

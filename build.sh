@@ -14,7 +14,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 echo "Compiling…"
 xcrun swiftc -O -swift-version 5 -parse-as-library \
   -target arm64-apple-macos14.0 \
-  -framework SwiftUI -framework AppKit \
+  -framework SwiftUI -framework AppKit -framework GameController \
   Sources/*.swift \
   -o "$APP/Contents/MacOS/Ferry"
 
@@ -23,6 +23,8 @@ cp Resources/ferry-winbuttons.exe "$APP/Contents/Resources/"
 cp Resources/d3d12-hide-rov.dll "$APP/Contents/Resources/"
 cp Resources/d3d9-ferry-x86.dll Resources/d3d9-ferry-x64.dll "$APP/Contents/Resources/"
 cp Resources/dxgi-vsync-x86.dll Resources/dxgi-vsync-x64.dll "$APP/Contents/Resources/"
+cp Resources/xinput-remap-x86.dll Resources/xinput-remap-x64.dll "$APP/Contents/Resources/"
+cp Resources/ferry-padkeys.exe "$APP/Contents/Resources/"
 cp Resources/ferry-vk-layer.json Resources/libferry_vk_layer.dylib "$APP/Contents/Resources/"
 
 echo "Making the icon…"

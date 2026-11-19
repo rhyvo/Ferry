@@ -35,6 +35,12 @@ struct FerryApp: App {
         .defaultSize(width: 600, height: 460)
         .keyboardShortcut("t", modifiers: [.command, .option])
 
+        Window("Controller", id: "controller") {
+            ControllerView()
+                .ferryTheme()
+        }
+        .defaultSize(width: 1100, height: 520)
+
         Settings {
             SettingsView()
                 .environmentObject(model)

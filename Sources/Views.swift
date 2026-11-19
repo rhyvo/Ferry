@@ -106,6 +106,10 @@ struct ContentView: View {
                     .help("See every Windows program Ferry is running, and end stuck ones")
             }
             ToolbarItem {
+                Button { openWindow(id: "controller") } label: { Label("Controller", systemImage: "gamecontroller") }
+                    .help("Remap controller buttons for every game and app, and save keybinds")
+            }
+            ToolbarItem {
                 Button { model.showStorage = true } label: { Label("Storage", systemImage: "internaldrive") }
                     .help("See what Ferry keeps on disk and free up space")
             }

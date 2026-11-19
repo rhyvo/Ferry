@@ -72,6 +72,7 @@ final class AppModel: ObservableObject {
     private var processes: [UUID: Process] = [:]
     private var handoffPIDs: [UUID: [Int32]] = [:]
     private var helpers: [UUID: Process] = [:]
+    private var padKeysHelpers: [UUID: Process] = [:]
     let fm = FileManager.default
 
     init() {
@@ -471,7 +472,8 @@ final class AppModel: ObservableObject {
             if !d3d.isEmpty { env["WINE_D3D_CONFIG"] = d3d.joined(separator: ",") }
         }
 
-        for name in vsyncHelpers(g, engine: engine) { overrides = Self.nativeFirst(name, in: overrides) }
+        for name in vsyncHelpers(g, engine: engine) + padHelpers(g) { overrides = Self.nativeFirst(name, in: overrides) }
+        if !padHelpers(g).isEmpty { env["FERRY_PAD_MAP"] = PadMap.current }
         for o in nativeXAudio2Overrides(g, engine: engine, prefix: prefix) + modOverrides(g) {
             overrides = overrides.isEmpty ? o : overrides + ";" + o
         }
@@ -876,19 +878,25 @@ final class AppModel: ObservableObject {
         return groups.joined(separator: ";")
     }
 
-    private func vsyncHelper(_ arch: PEArch) -> URL? {
-        Bundle.main.url(forResource: arch == .x86 ? "dxgi-vsync-x86" : "dxgi-vsync-x64", withExtension: "dll")
+    func padHelpers(_ g: Game) -> [String] {
+        PadMap.current.isEmpty || !helpersAllowed(g) ? [] : Self.xinputNames
+    }
+    static let xinputNames = ["xinput1_3", "xinput1_4", "xinput9_1_0", "xinput1_2", "xinput1_1"]
+
+    private func helper(_ name: String, _ arch: PEArch) -> URL? {
+        let base = name.hasPrefix("xinput") ? "xinput-remap" : "dxgi-vsync"
+        return Bundle.main.url(forResource: base + (arch == .x86 ? "-x86" : "-x64"), withExtension: "dll")
     }
 
     private func applyVSyncHelpers(_ p: PreparedGame) {
         guard var g = game(p.game.id) else { return }
         let dir = URL(fileURLWithPath: g.exePath).deletingLastPathComponent()
-        let wanted = Set(vsyncHelpers(g, engine: p.engine))
+        let wanted = Set(vsyncHelpers(g, engine: p.engine) + padHelpers(g))
         var placed = g.vsyncPlaced
-        for name in ["dxgi", "d3d11"] {
+        for name in ["dxgi", "d3d11"] + Self.xinputNames {
             let target = dir.appendingPathComponent("\(name).dll")
             let ours = placed.contains(target.path)
-            if wanted.contains(name), let helper = vsyncHelper(g.arch), modOwning(target, in: g) == nil {
+            if wanted.contains(name), let helper = helper(name, g.arch), modOwning(target, in: g) == nil {
                 if fm.contentsEqual(atPath: target.path, andPath: helper.path) {
                     if !ours { placed.append(target.path) }
                     continue
@@ -1015,6 +1023,7 @@ final class AppModel: ObservableObject {
         processes[id] = process
         running.insert(id)
         if p.game.settings.macFullScreenButton { startWindowButtonsHelper(p) }
+        if PadKeys.isOn && !hasAntiCheat(p.game) { startPadKeysHelper(p) }
         discordGameStarted(p.game)
 
         if var g = game(p.game.id) {
@@ -1054,7 +1063,7 @@ final class AppModel: ObservableObject {
             let text = line.trimmingCharacters(in: .whitespaces)
             guard let space = text.firstIndex(of: " "), let pid = Int32(text[..<space]) else { continue }
             let command = text[space...].lowercased()
-            if command.contains(".exe"), !command.contains("ferry-winbuttons"), needles.contains(where: { command.contains($0) }) { pids.append(pid) }
+            if command.contains(".exe"), !command.contains("ferry-winbuttons"), !command.contains("ferry-padkeys"), needles.contains(where: { command.contains($0) }) { pids.append(pid) }
         }
         return pids
     }
@@ -1069,6 +1078,20 @@ final class AppModel: ObservableObject {
         helperProcess.standardError = FileHandle.nullDevice
         helperProcess.standardInput = FileHandle.nullDevice
         if (try? helperProcess.run()) != nil { helpers[p.game.id] = helperProcess }
+    }
+
+    private func startPadKeysHelper(_ p: PreparedGame) {
+        guard let helper = Bundle.main.url(forResource: "ferry-padkeys", withExtension: "exe") else { return }
+        let helperProcess = Process()
+        helperProcess.executableURL = p.wine
+        helperProcess.arguments = [helper.path, Self.windowsFolder(of: p.game)]
+        var env = p.env
+        env["FERRY_PAD_KEYS"] = PadKeys.current
+        helperProcess.environment = env
+        helperProcess.standardOutput = FileHandle.nullDevice
+        helperProcess.standardError = FileHandle.nullDevice
+        helperProcess.standardInput = FileHandle.nullDevice
+        if (try? helperProcess.run()) != nil { padKeysHelpers[p.game.id] = helperProcess }
     }
 
     static func windowsFolder(of g: Game) -> String {
@@ -1090,6 +1113,7 @@ final class AppModel: ObservableObject {
 
     private func gameEnded(_ id: UUID, status: Int32, seconds: TimeInterval, engine: EngineID) {
         helpers.removeValue(forKey: id)?.terminate()
+        padKeysHelpers.removeValue(forKey: id)?.terminate()
         running.remove(id)
         Task {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
