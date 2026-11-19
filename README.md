@@ -18,6 +18,8 @@
 
 <p align="center">
   <a href="https://github.com/rhyvo/Ferry/releases"><img src="https://img.shields.io/github/downloads/rhyvo/Ferry/total?label=downloads&color=2ea44f&style=for-the-badge" alt="Total downloads"></a>
+  <a href="https://github.com/rhyvo/Ferry/stargazers"><img src="https://img.shields.io/github/stars/rhyvo/Ferry?style=for-the-badge&logo=github&color=e3b341" alt="GitHub stars"></a>
+  <a href="https://www.youtube.com/@rhyvo_ferry"><img src="https://img.shields.io/badge/YouTube-rhyvo__ferry-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube: rhyvo_ferry"></a>
 </p>
 
 <p align="center">
