@@ -64,11 +64,42 @@ struct TroubleshootView: View {
             HStack {
                 if let g = game { Text("\(g.name) · \(model.resolvedEngine(g).short)").foregroundStyle(.secondary) }
                 Spacer()
+                if let g = game {
+                    Button("Report a Bug…") { NSWorkspace.shared.open(bugReportURL(g)) }
+                        .help("Opens a bug report on Ferry's GitHub with this \(g.noun)'s details filled in (no file paths). You can read and change everything before sending it.")
+                }
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             .padding(16)
         }
         .frame(width: 560, height: 520)
+    }
+
+    private func bugReportURL(_ g: Game) -> URL {
+        var c = URLComponents(string: "https://github.com/rhyvo/Ferry/issues/new")!
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        var items = [
+            URLQueryItem(name: "template", value: "bug_report.yml"),
+            URLQueryItem(name: "ferry-version", value: version),
+            URLQueryItem(name: "mac", value: "\(Self.macModel), macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"),
+            URLQueryItem(name: "game", value: g.name),
+            URLQueryItem(name: "engine", value: model.subtitle(for: g)),
+        ]
+        if let symptom {
+            items.append(URLQueryItem(name: "title", value: "\(g.name): \(symptom.title)"))
+            items.append(URLQueryItem(name: "what-happened", value: symptom.title + "\n\n"))
+        }
+        c.queryItems = items
+        return c.url!
+    }
+
+    private static var macModel: String {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var name = [CChar](repeating: 0, count: max(size, 1))
+        sysctlbyname("hw.model", &name, &size, nil, 0)
+        return String(cString: name)
     }
 
     private var symptomList: some View {

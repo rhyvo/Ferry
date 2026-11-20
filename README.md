@@ -10,6 +10,8 @@
   <a href="#how-ferry-picks-an-engine">How it works</a>
   &nbsp;·&nbsp;
   <a href="#faq">FAQ</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/rhyvo/Ferry/issues/new/choose">🐞 Report a bug</a>
 </p>
 
 <p align="center">

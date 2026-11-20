@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Ferry, or a game running in it, doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! In Ferry, right-click the game ▸ **Troubleshoot… ▸ Report a Bug** fills in most of the details below for you.
+        Questions, and "does this game work?" reports, go in [Discussions](https://github.com/rhyvo/Ferry/discussions).
+  - type: input
+    id: ferry-version
+    attributes:
+      label: Ferry version
+      description: Ferry ▸ About Ferry
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS
+      placeholder: "MacBook Air M2 (Mac14,2), macOS 26.1"
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game or app
+      placeholder: "Tomb Raider (2013), from Steam"
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Engine and graphics
+      description: Shown under the game's name in Ferry's library.
+      placeholder: "DirectX 11 · 64-bit · D3DMetal (auto)"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happens
+      description: What you did, what you saw, and when it started.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+  - type: textarea
+    id: changed
+    attributes:
+      label: Anything you've tried
+      description: Settings you changed, other engines, Troubleshoot steps.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Optional. In Ferry, right-click the game ▸ **Show Log**. Paste the last lines, or drag the file in.
+        Logs can include your Mac's user name in file paths; edit it out if you like.
+      render: text
