@@ -47,7 +47,7 @@ More on the [Rhyvo YouTube channel](https://www.youtube.com/@rhyvo_ferry).
 ## Features
 
 - 🎮 **Drag and drop:** `.exe`, `.msi` and `.bat` files, game folders, and `.zip`, `.rar` and `.7z` archives (multi-part too). Archives are unpacked for you.
-- 🩺 **Compatibility Check:** see a game's engine, DirectX version, what it needs and what might block it, without running anything.
+- 🩺 **Compatibility Check:** see a game's engine, graphics (DirectX, Vulkan or OpenGL), what it needs and what might block it, without running anything.
 - 🧭 **Smart program picking:** for games with several programs, Ferry finds the real game, and offers single-player and multiplayer as separate entries.
 - 🚂 **One-click Steam:** installs Steam for Windows, and lets you add its games to your library.
 - ⚡ **Faster DirectX 9:** Ferry's own fix makes DirectX 9 games that copy the screen a lot several times faster on Apple GPUs.
