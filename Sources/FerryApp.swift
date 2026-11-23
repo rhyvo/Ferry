@@ -127,6 +127,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            let model = AppModel.shared
+            let busy = model.runtimes.task != nil || model.updating || model.setupRunning || model.installingComponent != nil
+            guard busy else { return .terminateNow }
+            let alert = NSAlert()
+            alert.messageText = "Ferry is still downloading or installing"
+            alert.informativeText = (model.runtimes.task ?? model.status ?? "An update is in progress.")
+                + "\n\nIf you quit now, it stops here. A download carries on from where it stopped the next time."
+            alert.addButton(withTitle: "Keep Ferry Open")
+            alert.addButton(withTitle: "Quit Anyway")
+            return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { AppModel.shared.runtimes.stopDownloads() }
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
         let open = NSApp.windows.filter { $0.styleMask.contains(.titled) && !$0.title.isEmpty && ($0.isVisible || $0.isMiniaturized) }

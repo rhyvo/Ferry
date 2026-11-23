@@ -156,7 +156,7 @@ final class RuntimeManager: ObservableObject {
 
         let archive = Paths.cache.appendingPathComponent(asset.name)
         if fm.byteSize(archive) != asset.size {
-            task = "Downloading \(kind.title) \(tag) (\(ByteCountFormatter.string(fromByteCount: Int64(asset.size), countStyle: .file)))…"
+            task = "Downloading \(kind.title) \(tag)…"
             try await download(url, to: archive, expectedBytes: asset.size)
         }
 
@@ -224,26 +224,147 @@ final class RuntimeManager: ObservableObject {
     }
 
     func download(_ url: URL, to dest: URL, expectedBytes: Int) async throws {
-        let part = dest.appendingPathExtension("part")
-        fm.removeIfPresent(part)
         try? fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let base = task
         progress = expectedBytes > 0 ? 0 : nil
+        var split = false
+        if expectedBytes >= Self.splitAbove { split = await acceptsRanges(url) }
+        let parts = split ? (0..<Self.pieces).map { dest.appendingPathExtension("part\($0)") }
+                          : [dest.appendingPathExtension("part")]
+        if parts.count > 1 { adoptSingleDownload(dest, as: parts[0], limit: Self.ranges(expectedBytes)[0].count) }
         let poll = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                if expectedBytes > 0, let self {
-                    self.progress = min(1, Double(self.fm.byteSize(part)) / Double(expectedBytes))
+                guard let self else { return }
+                if expectedBytes > 0 {
+                    let done = parts.reduce(0) { $0 + self.fm.byteSize($1) }
+                    self.progress = min(1, Double(done) / Double(expectedBytes))
+                    if let base { self.task = base + " " + Self.sizeText(done, of: expectedBytes) }
                 }
                 try? await Task.sleep(nanoseconds: 300_000_000)
             }
         }
-        let status = await Shell.run("/usr/bin/curl", ["-L", "--fail", "--retry", "3", "-s", "-o", part.path, url.absoluteString])
-        poll.cancel()
-        guard status == 0 else {
-            fm.removeIfPresent(part)
-            throw FerryError("Download failed from \(url.host ?? "the internet"). Check your connection and try again.")
+        defer { poll.cancel(); if base != nil { task = base } }
+
+        let ok: Bool
+        if parts.count == 1 {
+            if expectedBytes > 0 && fm.byteSize(parts[0]) == expectedBytes {
+                ok = true
+            } else {
+                ok = await curl(["-C", "-", "-o", parts[0].path, url.absoluteString]) == 0
+                    && (expectedBytes == 0 || fm.byteSize(parts[0]) == expectedBytes)
+            }
+        } else {
+            let ranges = Self.ranges(expectedBytes)
+            ok = await withTaskGroup(of: Bool.self) { group in
+                for (part, range) in zip(parts, ranges) {
+                    group.addTask { await self.fetch(url, range: range, into: part) }
+                }
+                var all = true
+                for await done in group { all = all && done }
+                return all
+            }
+        }
+        guard ok else {
+            throw FerryError("The download from \(url.host ?? "the internet") stopped. Check your connection and try again; it carries on from where it stopped.")
         }
         fm.removeIfPresent(dest)
-        try fm.moveItem(at: part, to: dest)
+        if parts.count == 1 {
+            try fm.moveItem(at: parts[0], to: dest)
+        } else {
+            guard await join(parts, into: dest), fm.byteSize(dest) == expectedBytes else {
+                fm.removeIfPresent(dest)
+                parts.forEach(fm.removeIfPresent)
+                throw FerryError("The download from \(url.host ?? "the internet") came out the wrong size. Try again.")
+            }
+            parts.forEach(fm.removeIfPresent)
+        }
+    }
+
+    static let splitAbove = 32 * 1_048_576
+    static let pieces = 4
+
+    static func ranges(_ total: Int) -> [ClosedRange<Int>] {
+        let size = (total + pieces - 1) / pieces
+        return (0..<pieces).compactMap { i in
+            let start = i * size, end = min(total, start + size) - 1
+            return start <= end ? start...end : nil
+        }
+    }
+
+    static func sizeText(_ done: Int, of total: Int) -> String {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return "\(f.string(fromByteCount: Int64(done))) of \(f.string(fromByteCount: Int64(total)))"
+    }
+
+    private func acceptsRanges(_ url: URL) async -> Bool {
+        let (status, output) = await Shell.capture("/usr/bin/curl", ["-L", "-s", "-r", "0-0", "-o", "/dev/null",
+                                                                     "-w", "%{http_code}", "--max-time", "20", url.absoluteString])
+        return status == 0 && output.trimmingCharacters(in: .whitespacesAndNewlines) == "206"
+    }
+
+    private func adoptSingleDownload(_ dest: URL, as first: URL, limit: Int) {
+        let single = dest.appendingPathExtension("part")
+        guard fm.exists(single), !fm.exists(first) else { fm.removeIfPresent(single); return }
+        guard (try? fm.moveItem(at: single, to: first)) != nil else { return }
+        if fm.byteSize(first) > limit, let handle = try? FileHandle(forWritingTo: first) {
+            try? handle.truncate(atOffset: UInt64(limit))
+            try? handle.close()
+        }
+    }
+
+    private func fetch(_ url: URL, range: ClosedRange<Int>, into part: URL) async -> Bool {
+        for _ in 0..<3 {
+            let have = fm.byteSize(part)
+            if have == range.count { return true }
+            if have > range.count { fm.removeIfPresent(part); continue }
+            if !fm.exists(part) { fm.createFile(atPath: part.path, contents: nil) }
+            guard let handle = try? FileHandle(forWritingTo: part) else { return false }
+            _ = try? handle.seekToEnd()
+            _ = await curl(["-r", "\(range.lowerBound + have)-\(range.upperBound)", url.absoluteString], output: handle)
+            try? handle.close()
+        }
+        return fm.byteSize(part) == range.count
+    }
+
+    private func join(_ parts: [URL], into dest: URL) async -> Bool {
+        guard fm.createFile(atPath: dest.path, contents: nil), let out = try? FileHandle(forWritingTo: dest) else { return false }
+        defer { try? out.close() }
+        for part in parts {
+            guard let input = try? FileHandle(forReadingFrom: part) else { return false }
+            defer { try? input.close() }
+            while let chunk = try? input.read(upToCount: 8 * 1_048_576), !chunk.isEmpty {
+                guard (try? out.write(contentsOf: chunk)) != nil else { return false }
+            }
+        }
+        return true
+    }
+
+    private var downloads: [Process] = []
+
+    func stopDownloads() {
+        downloads.forEach { $0.terminate() }
+    }
+
+    private func curl(_ args: [String], output: FileHandle? = nil) async -> Int32 {
+        await withCheckedContinuation { (cont: CheckedContinuation<Int32, Never>) in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+            p.arguments = ["-L", "--fail", "--retry", "3", "-s"] + args
+            p.standardOutput = output ?? FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            p.standardInput = FileHandle.nullDevice
+            p.terminationHandler = { proc in
+                Task { @MainActor in self.downloads.removeAll { $0 === proc } }
+                cont.resume(returning: proc.terminationStatus)
+            }
+            do {
+                try p.run()
+                downloads.append(p)
+            } catch {
+                cont.resume(returning: -1)
+            }
+        }
     }
 
     func isCached(_ name: String) -> Bool {

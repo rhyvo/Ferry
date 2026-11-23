@@ -54,7 +54,7 @@ fi
 ferry_busy() {
   pgrep -x Ferry >/dev/null || return 1
   local data="$HOME/Library/Application Support/Ferry"
-  compgen -G "$data/Cache/*.part" >/dev/null || compgen -G "$data/Runtimes/*.new" >/dev/null \
+  pgrep -P "$(pgrep -x Ferry | head -1)" -x curl >/dev/null || compgen -G "$data/Runtimes/*.new" >/dev/null \
     || compgen -G "$data/Runtimes/*.building" >/dev/null || compgen -G "$data/Templates/*.building" >/dev/null \
     || pgrep -f wineserver >/dev/null || pgrep -f "Ferry/Runtimes/7zip/7zz" >/dev/null
 }
