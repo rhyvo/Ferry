@@ -331,11 +331,18 @@ struct ControllerView: View {
         let text = controller ? bound.map(PadMap.name) : PadKeys.label(keyBinds[id])
         let lit = controller ? bound.map(input.pressed.contains) ?? false : input.pressed.contains(id)
         let waiting = listening == id
+        let clash = clashes(id)
         return HStack {
             Text(PadMap.name(id))
                 .font(.callout)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if !clash.isEmpty {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .help("Also sent by \(clash.joined(separator: ", ")). Letting go of one can release the key while the other is still held.")
+                    .accessibilityLabel("Also sent by \(clash.joined(separator: ", "))")
+            }
             Button {
                 waiting ? stopListening() : listen(id)
             } label: {
@@ -348,7 +355,7 @@ struct ControllerView: View {
                     .background(RoundedRectangle(cornerRadius: 5)
                         .fill(waiting ? Color.accentColor : Color.primary.opacity(0.08)))
                     .overlay(RoundedRectangle(cornerRadius: 5)
-                        .stroke(waiting ? Color.accentColor : Color.primary.opacity(0.15)))
+                        .stroke(waiting ? Color.accentColor : !clash.isEmpty ? Color.orange : Color.primary.opacity(0.15)))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -370,6 +377,19 @@ struct ControllerView: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(lit ? 0.28 : 0)))
         .help(controller ? "Click, then press the button on your controller that should be \(PadMap.name(id)) in games"
                          : "Click, then press the key or mouse button \(PadMap.name(id)) should send")
+    }
+
+    private func clashes(_ id: String) -> [String] {
+        guard mode == .keyboard, let mine = keyBinds[id] else { return [] }
+        var out = PadMap.controls.map(\.id).filter { $0 != id && keyBinds[$0] == mine }.map(PadMap.name)
+        if let code = PadKeys.code(mine) {
+            for stick in ["lstick", "rstick"] {
+                let codes = keyBinds[stick] == "wasd" ? [0x11, 0x1F, 0x1E, 0x20]
+                    : keyBinds[stick] == "arrows" ? [0xE048, 0xE050, 0xE04B, 0xE04D] : []
+                if codes.contains(code) { out.append(PadMap.name(stick)) }
+            }
+        }
+        return out
     }
 
     private func stickRow(_ id: String) -> some View {

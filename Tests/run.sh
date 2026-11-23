@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 files=()
-for f in Sources/ModModels.swift Sources/ModLayout.swift Sources/ModFiles.swift Sources/ModSearch.swift Sources/InstalledPrograms.swift Sources/TaskList.swift Sources/ProgramChoice.swift Sources/Letterbox.swift; do
+for f in Sources/ModModels.swift Sources/ModLayout.swift Sources/ModFiles.swift Sources/ModSearch.swift Sources/InstalledPrograms.swift Sources/TaskList.swift Sources/ProgramChoice.swift Sources/Letterbox.swift Sources/Naming.swift; do
   [ -f "$f" ] && files+=("$f")
 done
 mkdir -p build

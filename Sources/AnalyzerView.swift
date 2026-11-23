@@ -23,6 +23,14 @@ final class AnalyzerModel: ObservableObject {
     private var sourceName = ""
     private var busy = false
 
+    static let recentsKey = "recentChecks"
+    private func remember(_ url: URL) {
+        var list = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
+        list.removeAll { $0 == url.path }
+        list.insert(url.path, at: 0)
+        UserDefaults.standard.set(Array(list.prefix(6)), forKey: Self.recentsKey)
+    }
+
     static func isArchive(_ url: URL) -> Bool {
         !FileManager.default.isDirectory(url) && ArchiveSet.looksLikeArchive(url)
     }
@@ -37,6 +45,7 @@ final class AnalyzerModel: ObservableObject {
             problem = "Ferry can check Windows programs (.exe, .msi, .bat), folders, and .zip, .rar or .7z archives (including multi-part ones)."
             return
         }
+        remember(url)
         report = nil
         problem = nil
         addedName = nil
@@ -375,6 +384,7 @@ struct AnalyzerView: View {
     @ObservedObject private var analyzer = AnalyzerModel.shared
     @State private var targeted = false
     @AppStorage("deleteArchiveAfterAdd") private var deleteAfterAdd = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -404,8 +414,7 @@ struct AnalyzerView: View {
                     } else if let report = analyzer.report {
                         ReportView(report: report)
                     } else {
-                        Text("Ferry reads the program's files without running it, and tells you what it is, what it needs, whether anything will block it, and which settings to use.")
-                            .foregroundStyle(.secondary)
+                        startPage
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -423,6 +432,73 @@ struct AnalyzerView: View {
             analyzer.analyze(url)
             return true
         } isTargeted: { targeted = $0 }
+    }
+
+    private var startPage: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Ferry reads the program's files without running it, and tells you what it is, what it needs, whether anything will block it, and which settings to use.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            let games = model.games.filter { !$0.exePath.isEmpty }
+            if !games.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Your Library").font(.headline)
+                    Text("See what Ferry found in a game or app you've already added, and why it picked its engine.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(games) { g in
+                        startRow(title: g.name, detail: model.subtitle(for: g)) {
+                            GameIconView(game: g, side: 26)
+                        } action: {
+                            analyzer.analyze(URL(fileURLWithPath: g.exePath))
+                        }
+                    }
+                }
+            }
+            let recents = recentChecks
+            if !recents.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Recent Checks").font(.headline)
+                    ForEach(recents, id: \.self) { url in
+                        startRow(title: url.lastPathComponent,
+                                 detail: (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath) {
+                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                                .resizable()
+                                .frame(width: 26, height: 26)
+                        } action: {
+                            analyzer.analyze(url)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var recentChecks: [URL] {
+        (UserDefaults.standard.stringArray(forKey: AnalyzerModel.recentsKey) ?? [])
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .map { URL(fileURLWithPath: $0) }
+    }
+
+    private func startRow<Icon: View>(title: String, detail: String, @ViewBuilder icon: () -> Icon,
+                                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                icon()
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).lineLimit(1)
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Check \(title)")
     }
 
     private var dropArea: some View {
@@ -479,8 +555,17 @@ struct AnalyzerView: View {
 
     @ViewBuilder
     private func buttonRow(_ report: AnalysisReport) -> some View {
+        let existing = model.games.first { $0.exePath == report.exe.path }
         HStack {
-            if let added = analyzer.addedName {
+            if analyzer.addedName == nil, let existing {
+                Label("\(existing.name) is already in your library", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Its Settings") {
+                    model.settingsGame = existing.id
+                    openWindow(id: "main")
+                }
+            } else if let added = analyzer.addedName {
                 Label(analyzer.archiveDeleted ? "\(added) is in your library; the archive was deleted" : "\(added) is in your library",
                       systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -490,12 +575,14 @@ struct AnalyzerView: View {
             } else if report.verdict == .wontWork {
                 Text("Ferry can't run this one.").font(.caption).foregroundStyle(.secondary)
             }
-            Spacer()
-            Button("Add to Ferry") { analyzer.add(play: false) }
-                .disabled(!canAdd(report))
-            Button("Add and Play") { analyzer.add(play: true) }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canAdd(report))
+            if existing == nil || analyzer.addedName != nil {
+                Spacer()
+                Button("Add to Ferry") { analyzer.add(play: false) }
+                    .disabled(!canAdd(report))
+                Button("Add and Play") { analyzer.add(play: true) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canAdd(report))
+            }
         }
     }
 

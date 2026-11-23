@@ -60,6 +60,7 @@ struct TaskManagerView: View {
     @State private var lastGPU: [Int32: UInt64] = [:]
     @State private var gpuDevice: Int? = nil
     @State private var confirmEnd: ProgramGroup? = nil
+    @State private var confirmEndEverything = false
     @AppStorage("taskManagerShowsWine") private var showWine = false
 
     private struct ProgramGroup: Identifiable {
@@ -147,6 +148,10 @@ struct TaskManagerView: View {
             HStack {
                 Toggle("Show Wine's system processes", isOn: $showWine)
                     .help("services.exe, explorer.exe and the other background programs every Windows environment runs")
+                if visible.count >= 2 {
+                    Button("End Everything…") { confirmEndEverything = true }
+                        .help("End every Windows program Ferry is running")
+                }
                 Spacer()
                 Text(footer(shown: processes.count - hidden, hidden: hidden))
                     .foregroundStyle(.secondary)
@@ -161,6 +166,12 @@ struct TaskManagerView: View {
             Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text("Anything not saved in it is lost.")
+        }
+        .confirmationDialog("End every Windows program?", isPresented: $confirmEndEverything) {
+            Button("End Everything", role: .destructive) { visible.forEach(endAll) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(visible.map(\.title).joined(separator: ", ")) will close. Anything not saved in them is lost.")
         }
         .task {
             while !Task.isCancelled {
@@ -226,9 +237,11 @@ struct TaskManagerView: View {
     private func footer(shown: Int, hidden: Int) -> String {
         let total = processes.reduce(UInt64(0)) { $0 + $1.memory }
         func count(_ n: Int, _ what: String) -> String { "\(n) \(what)\(n == 1 ? "" : "s")" }
-        var text = shown == 0 && hidden > 0 ? count(hidden, "background program")
+        let gpu = gpuDevice.map { " · GPU \($0)% in use" } ?? ""
+        if shown == 0 && hidden == 0 { return "Nothing running" + gpu }
+        let text = shown == 0 && hidden > 0 ? count(hidden, "background program")
                  : count(shown, "program") + (hidden > 0 ? " (+\(hidden) background)" : "")
-        return text + " · " + Self.memoryText(total) + (gpuDevice.map { " · GPU \($0)% in use" } ?? "")
+        return text + " · " + Self.memoryText(total) + gpu
     }
 
     private func row(_ p: WindowsProcess, owner: TaskList.Owner) -> some View {

@@ -43,8 +43,11 @@ struct TroubleshootView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(symptom == nil ? "What's happening?" : symptom!.title).font(.title3.weight(.semibold))
+            HStack(spacing: 12) {
+                if let g = game { GameIconView(game: g, side: 32) }
+                Text(symptom?.title ?? "What's happening with \(game?.name ?? "it")?")
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
                 Spacer()
                 if symptom != nil { Button("Back") { symptom = nil; done = [] } }
             }

@@ -35,6 +35,7 @@ runSafetyTests()
 runInstalledProgramsTests()
 runTaskListTests()
 runProgramChoiceTests()
+runNamingTests()
 runLetterboxTests()
 
 if failures == 0 { print("ALL PASSED") } else { print("\(failures) FAILED"); exit(1) }

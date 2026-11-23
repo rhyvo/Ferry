@@ -53,6 +53,8 @@ struct FerryApp: App {
 struct FerryCommands: Commands {
     let model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.selectedGame) private var selected
+    @AppStorage(LibrarySort.key) private var sort = LibrarySort.added
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -60,8 +62,36 @@ struct FerryCommands: Commands {
             Button("Support Ferry…") { NSWorkspace.shared.open(URL(string: "https://ko-fi.com/rhyvo")!) }
         }
         CommandGroup(after: .newItem) {
+            Button("Add Windows Program…") { model.chooseFile() }
+                .keyboardShortcut("o", modifiers: [.command])
             Button("Check Compatibility…") { openWindow(id: "analyzer") }
                 .keyboardShortcut("k", modifiers: [.command])
+        }
+        CommandGroup(before: .toolbar) {
+            Picker("Sort Library By", selection: $sort) {
+                ForEach(LibrarySort.allCases) { Text($0.title).tag($0) }
+            }
+            Divider()
+        }
+        CommandMenu("Game") {
+            let id = selected
+            Button(id.map { model.running.contains($0) } == true ? "Stop" : "Play") {
+                guard let id else { return }
+                if model.running.contains(id) { model.stop(id) } else { model.play(id) }
+            }
+            .disabled(id == nil)
+            Button("Settings…") { model.settingsGame = id }
+                .keyboardShortcut("i", modifiers: [.command])
+                .disabled(id == nil)
+            Button("Troubleshoot…") { model.troubleshootGame = id }
+                .disabled(id == nil)
+            Button("Mods…") { model.modsGame = id }
+                .disabled(id == nil)
+            Divider()
+            Button("Show Log") { if let id { model.showLog(id, "game") } }
+                .disabled(id == nil)
+            Button("Show Files in Finder") { if let id { model.showGameInFinder(id) } }
+                .disabled(id == nil)
         }
     }
 }

@@ -47,6 +47,8 @@ final class AppModel: ObservableObject {
     private let backdrop = FullscreenBackdrop()
     private var installWatches: [UUID: (before: InstalledPrograms.Snapshot, engine: EngineID, driveC: URL)] = [:]
     @Published var troubleshootGame: UUID? = nil
+    @Published var settingsGame: UUID? = nil
+    var startedAt: [UUID: Date] = [:]
     @Published var modsGame: UUID? = nil
     var modWorkInFlight = 0
     var lowPowerAcknowledged = false
@@ -206,7 +208,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    static func friendlyName(for url: URL) -> String { Naming.friendlyName(for: url) }
+    static func friendlyName(for url: URL) -> String {
+        Naming.friendlyName(for: url) { PEVersionInfo.string("ProductName", in: $0) ?? PEVersionInfo.string("FileDescription", in: $0) }
+    }
 
     func sharers(of id: UUID) -> [Game] { games.filter { $0.sharedWith == id } }
 
@@ -313,8 +317,8 @@ final class AppModel: ObservableObject {
 
     func subtitle(for g: Game) -> String {
         let engine = resolvedEngine(g)
-        let engineText = g.settings.engine == .auto ? "\(engine.short) (auto)" : engine.short
-        var parts = [g.graphics.label, g.arch.label, engineText]
+        let engineText = g.settings.engine == .auto ? "\(engine.short) (Automatic)" : engine.short
+        var parts = (g.graphics == .unknown ? [] : [g.graphics.label]) + [g.arch.label, engineText]
         let owner = environmentOwner(of: g)
         if owner.id != g.id { parts.append("in \(owner.name)") }
         return parts.joined(separator: " · ")
@@ -1023,6 +1027,7 @@ final class AppModel: ObservableObject {
         }
         try process.run()
         processes[id] = process
+        startedAt[id] = started
         running.insert(id)
         if p.game.settings.macFullScreenButton { startWindowButtonsHelper(p) }
         if PadKeys.isOn && !hasAntiCheat(p.game) { startPadKeysHelper(p) }
@@ -1116,6 +1121,7 @@ final class AppModel: ObservableObject {
     private func gameEnded(_ id: UUID, status: Int32, seconds: TimeInterval, engine: EngineID) {
         helpers.removeValue(forKey: id)?.terminate()
         padKeysHelpers.removeValue(forKey: id)?.terminate()
+        startedAt[id] = nil
         running.remove(id)
         Task {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
