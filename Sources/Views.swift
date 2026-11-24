@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var targeted = false
     @State private var selection: UUID? = nil
     @State private var search = ""
+    @FocusState private var listFocused: Bool
+    @FocusState private var searchFocused: Bool
     @AppStorage(LibrarySort.key) private var sort = LibrarySort.added
 
     var body: some View {
@@ -17,6 +19,32 @@ struct ContentView: View {
             library
         } else {
             SetupView()
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search games and apps", text: $search)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .onExitCommand { search = ""; searchFocused = false; listFocused = true }
+                .onSubmit { searchFocused = false; listFocused = true }
+            if !search.isEmpty {
+                Button { search = ""; listFocused = true } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.secondary.opacity(0.1)))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+        .background {
+            Button("") { searchFocused = true }.keyboardShortcut("f").hidden()
         }
     }
 
@@ -49,6 +77,7 @@ struct ContentView: View {
             DropZone(targeted: targeted, compact: !model.games.isEmpty)
                 .padding(.horizontal, 16)
                 .padding(.vertical, model.games.isEmpty ? 16 : 12)
+            if !model.games.isEmpty { searchField }
             if model.games.isEmpty {
                 Spacer()
                 Text("Games and programs you add show up here.")
@@ -72,6 +101,10 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.inset)
+                .focused($listFocused)
+                .onExitCommand { selection = nil }
+                .onAppear { listFocused = true }
+                .onChange(of: selection) { _, new in if new != nil { listFocused = true } }
                 .contextMenu(forSelectionType: UUID.self) { ids in
                     if let id = ids.first, let g = model.game(id) { GameActions(game: g) }
                 } primaryAction: { ids in
@@ -79,8 +112,8 @@ struct ContentView: View {
                 }
             }
         }
-        .modifier(LibrarySearch(enabled: model.games.count >= 8, text: $search))
         .focusedSceneValue(\.selectedGame, selection)
+        .animation(.easeOut(duration: 0.18), value: targeted)
         .dropDestination(for: URL.self) { urls, _ in
             var checking = false
             for url in urls {
@@ -150,17 +183,65 @@ struct ContentView: View {
                     .help("Remap controller buttons for every game and app, and save keybinds")
             }
             ToolbarItem(id: "storage") {
-                Button {
-                    UserDefaults.standard.set("storage", forKey: SettingsView.tabKey)
-                    openSettings()
-                } label: { Label("Storage", systemImage: "internaldrive") }
-                    .help("See what Ferry keeps on disk and free up space")
+                settingsShortcut("Storage", "internaldrive", tab: "storage", help: "See what Ferry keeps on disk and free up space")
             }
             ToolbarItem(id: "settings") {
                 SettingsLink { Label("Settings", systemImage: "gearshape") }
                     .help("Engines, defaults and system setup")
             }
+            ToolbarShortcuts(model: model) { tab in
+                UserDefaults.standard.set(tab, forKey: SettingsView.tabKey)
+                openSettings()
+            }
         }
+    }
+}
+
+struct ToolbarShortcuts: CustomizableToolbarContent {
+    let model: AppModel
+    let openTab: (String) -> Void
+
+    var body: some CustomizableToolbarContent {
+        ToolbarItem(id: "engines", showsByDefault: false) {
+            tabButton("Engines", "cpu", "engines", "Settings ▸ Engines: update, reinstall or remove engines")
+        }
+        ToolbarItem(id: "components", showsByDefault: false) {
+            tabButton("Components", "shippingbox", "components", "Settings ▸ Components: Windows libraries and optional downloads")
+        }
+        ToolbarItem(id: "general", showsByDefault: false) {
+            tabButton("General", "switch.2", "general", "Settings ▸ General: theme, archives, Compatibility Check and Discord")
+        }
+        ToolbarItem(id: "newGames", showsByDefault: false) {
+            tabButton("New Games", "plus.app", "newGames", "Settings ▸ New Games: what newly added games and apps start with")
+        }
+        ToolbarItem(id: "system", showsByDefault: false) {
+            tabButton("System", "lock.shield", "system", "Settings ▸ System: Rosetta, folder access and repair")
+        }
+        ToolbarItem(id: "checkUpdates", showsByDefault: false) {
+            Button { model.checkForUpdatesNow() } label: { Label("Check for Updates", systemImage: "arrow.triangle.2.circlepath") }
+                .help("Check for a new Ferry and new engines now")
+        }
+        ToolbarItem(id: "reportBug", showsByDefault: false) {
+            Button { NSWorkspace.shared.open(URL(string: "https://github.com/rhyvo/Ferry/issues/new/choose")!) } label: {
+                Label("Report a Bug", systemImage: "ladybug")
+            }
+            .help("Open a bug report on Ferry's GitHub")
+        }
+    }
+
+    private func tabButton(_ title: String, _ icon: String, _ tab: String, _ help: String) -> some View {
+        Button { openTab(tab) } label: { Label(title, systemImage: icon) }
+            .help(help)
+    }
+}
+
+extension ContentView {
+    func settingsShortcut(_ title: String, _ icon: String, tab: String, help: String) -> some View {
+        Button {
+            UserDefaults.standard.set(tab, forKey: SettingsView.tabKey)
+            openSettings()
+        } label: { Label(title, systemImage: icon) }
+        .help(help.isEmpty ? "Settings ▸ \(title)" : help)
     }
 }
 
@@ -173,19 +254,6 @@ enum LibrarySort: String, CaseIterable, Identifiable {
         case .added: return "Date Added"
         case .name: return "Name"
         case .recent: return "Recently Played"
-        }
-    }
-}
-
-struct LibrarySearch: ViewModifier {
-    let enabled: Bool
-    @Binding var text: String
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.searchable(text: $text, placement: .toolbar, prompt: "Search games and apps")
-        } else {
-            content
         }
     }
 }
@@ -784,7 +852,6 @@ struct DropZone: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.18), value: slim)
         .help(message == nil ? "Add a Windows game or app (⌘O)" : "")
         .accessibilityLabel(message ?? "Add a Windows game or app")
         .accessibilityHint(message == nil ? "Opens a file picker. You can also drop a program, folder or archive onto Ferry's window." : "")
@@ -848,7 +915,6 @@ struct GameIconView: View {
 struct GameRow: View {
     @EnvironmentObject var model: AppModel
     let game: Game
-    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -896,10 +962,6 @@ struct GameRow: View {
             .accessibilityLabel("More for \(game.name)")
         }
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.primary.opacity(hovering ? 0.05 : 0))
-            .padding(.horizontal, -6))
-        .onHover { hovering = $0 }
         .accessibilityActions {
             Button("Settings") { model.settingsGame = game.id }
             Button("Troubleshoot") { model.troubleshootGame = game.id }

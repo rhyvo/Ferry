@@ -313,6 +313,7 @@ struct StorageView: View {
     @State private var confirming = false
     @State private var free: Int64 = 0
     @State private var onlyDeletable = false
+    @AppStorage("storageSort") private var sort = "size"
 
     private enum Category: CaseIterable {
         case games, engines, templates, other
@@ -351,9 +352,13 @@ struct StorageView: View {
             totals[item.group, default: 0] += item.bytes ?? 0
         }
         func rank(_ name: String) -> Int { name == "Ferry" ? 2 : name == "Removed programs" ? 1 : 0 }
+        let all = order.enumerated().map { (index: $0.offset, name: $0.element, bytes: totals[$0.element] ?? 0) }
+        if sort == "name" {
+            return all.sorted { (rank($0.name), $0.name.lowercased()) < (rank($1.name), $1.name.lowercased()) }
+                .map { ($0.name, $0.bytes) }
+        }
         let bySize = !measuring
-        return order.enumerated().map { (index: $0.offset, name: $0.element, bytes: totals[$0.element] ?? 0) }
-            .sorted { (rank($0.name), bySize ? -$0.bytes : 0, $0.index) < (rank($1.name), bySize ? -$1.bytes : 0, $1.index) }
+        return all.sorted { (bySize ? -$0.bytes : 0, rank($0.name), $0.index) < (bySize ? -$1.bytes : 0, rank($1.name), $1.index) }
             .map { ($0.name, $0.bytes) }
     }
 
@@ -368,24 +373,23 @@ struct StorageView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            let scroller = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
             summary
-                .padding([.horizontal, .top], 20)
-                .padding(.bottom, 12)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.secondary.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.secondary.opacity(0.12)))
+                .padding(.leading, 14)
+                .padding(.trailing, 14 + scroller)
+                .padding(.top, 16)
 
-            List {
-                ForEach(groups, id: \.name) { group in
-                    Section {
-                        ForEach(shownItems.filter { $0.group == group.name }) { item in row(item) }
-                    } header: {
-                        HStack {
-                            Text(group.name)
-                            Spacer()
-                            if !measuring { Text(DiskUsage.text(group.bytes)).monospacedDigit() }
-                        }
-                    }
+            ScrollView {
+                LazyVStack(spacing: 14) {
+                    ForEach(groups, id: \.name) { group in card(group) }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
             }
-            .listStyle(.inset)
             .overlay {
                 if onlyDeletable && shownItems.isEmpty && !items.isEmpty {
                     ContentUnavailableView("Nothing to Delete", systemImage: "checkmark.circle",
@@ -440,6 +444,12 @@ struct StorageView: View {
                     Text("· \(DiskUsage.text(free)) free on this Mac").foregroundStyle(.secondary).monospacedDigit()
                 }
                 Spacer()
+                Picker("Sort By", selection: $sort) {
+                    Text("Size Used").tag("size")
+                    Text("Name").tag("name")
+                }
+                .fixedSize()
+                .help("Order the cards, and the items in each, by how much space they use or by name")
                 Picker("Show", selection: $onlyDeletable) {
                     Text("All Items").tag(false)
                     Text("Can Be Deleted").tag(true)
@@ -487,8 +497,68 @@ struct StorageView: View {
         return model.running.contains(id)
     }
 
+    private func card(_ group: (name: String, bytes: Int64)) -> some View {
+        var groupItems = shownItems.filter { $0.group == group.name }
+        if sort == "name" {
+            groupItems.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        } else if !measuring {
+            groupItems.sort { ($0.bytes ?? 0) > ($1.bytes ?? 0) }
+        }
+        let largest = groupItems.compactMap(\.bytes).max() ?? 0
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    groupIcon(group.name, items: groupItems)
+                    Text(group.name).font(.headline).lineLimit(1)
+                    Spacer()
+                    if !measuring {
+                        Text(DiskUsage.text(group.bytes)).font(.headline).monospacedDigit()
+                    }
+                }
+                GeometryReader { geo in
+                    HStack(spacing: 1) {
+                        ForEach(Category.allCases, id: \.self) { c in
+                            let bytes = groupItems.filter { category($0) == c }.reduce(Int64(0)) { $0 + ($1.bytes ?? 0) }
+                            let share = ferryTotal > 0 ? CGFloat(bytes) / CGFloat(ferryTotal) : 0
+                            if share > 0 { c.color.frame(width: max(2, geo.size.width * share)) }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .background(Color.secondary.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+                .frame(height: 5)
+                .accessibilityHidden(true)
+            }
+            .padding(14)
+            Divider().padding(.leading, 14)
+            ForEach(groupItems) { item in
+                row(item, largest: largest)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                if item.id != groupItems.last?.id { Divider().padding(.leading, 44) }
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.secondary.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.secondary.opacity(0.12)))
+    }
+
     @ViewBuilder
-    private func row(_ item: StorageItem) -> some View {
+    private func groupIcon(_ name: String, items: [StorageItem]) -> some View {
+        if let id = items.compactMap(\.gameID).first, let game = model.game(id) {
+            GameIconView(game: game, side: 28)
+        } else if name == "Ferry" {
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 28, height: 28)
+        } else {
+            Image(systemName: name == "Removed programs" ? "trash" : "folder")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ item: StorageItem, largest: Int64) -> some View {
         HStack(alignment: .top, spacing: 10) {
             if item.canDelete {
                 Toggle(item.title, isOn: Binding(
@@ -515,14 +585,24 @@ struct StorageView: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
                 .background(Capsule().fill(item.status.color.opacity(0.12)))
-            Group {
-                if let bytes = item.bytes { Text(DiskUsage.text(bytes)) } else { ProgressView().controlSize(.mini) }
+            VStack(alignment: .trailing, spacing: 4) {
+                Group {
+                    if let bytes = item.bytes { Text(DiskUsage.text(bytes)) } else { ProgressView().controlSize(.mini) }
+                }
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                if let bytes = item.bytes, largest > 0 {
+                    ZStack(alignment: .trailing) {
+                        Capsule().fill(Color.secondary.opacity(0.15))
+                        Capsule().fill(category(item).color.opacity(0.85))
+                            .frame(width: max(2, 72 * CGFloat(bytes) / CGFloat(largest)))
+                    }
+                    .frame(width: 72, height: 4)
+                    .accessibilityHidden(true)
+                }
             }
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
         }
-        .padding(.vertical, 3)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }

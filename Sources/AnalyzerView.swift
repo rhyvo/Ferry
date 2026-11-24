@@ -23,6 +23,18 @@ final class AnalyzerModel: ObservableObject {
     private var sourceName = ""
     private var busy = false
 
+    @Published private(set) var lastChecked: URL? = nil
+
+    func reset() {
+        guard !busy else { return }
+        if addedName == nil { discardUnpacked() }
+        report = nil
+        problem = nil
+        addedName = nil
+        note = nil
+        lastChecked = nil
+    }
+
     static let recentsKey = "recentChecks"
     private func remember(_ url: URL) {
         var list = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
@@ -46,6 +58,7 @@ final class AnalyzerModel: ObservableObject {
             return
         }
         remember(url)
+        lastChecked = url
         report = nil
         problem = nil
         addedName = nil
@@ -391,6 +404,20 @@ struct AnalyzerView: View {
             dropArea
                 .padding(16)
             Divider()
+            if analyzer.working == nil && (analyzer.report != nil || analyzer.problem != nil) {
+                HStack {
+                    Button { analyzer.reset() } label: { Label("All Checks", systemImage: "chevron.left") }
+                        .help("Back to your library and recent checks")
+                    Spacer()
+                    if let url = analyzer.lastChecked {
+                        Button { analyzer.analyze(url) } label: { Label("Check Again", systemImage: "arrow.clockwise") }
+                            .help("Read \(url.lastPathComponent) again, e.g. after changing its files")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let working = analyzer.working {
