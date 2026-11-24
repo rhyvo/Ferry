@@ -338,6 +338,16 @@ struct ErrorAlert: ViewModifier {
             } message: { _ in
                 Text("Ferry noticed it uses rasterizer-ordered views (ROV), a drawing method D3DMetal says it supports but can show as a black screen or black objects. Hide ROV support makes the game use its ordinary method. If the game already looks right, you can leave it off.")
             }
+            .alert("\(model.stallPrompt.flatMap { model.game($0)?.name } ?? "This game") got stuck waiting", isPresented: Binding(
+                get: { model.stallPrompt != nil },
+                set: { if !$0 { model.stallPrompt = nil } }
+            ), presenting: model.stallPrompt) { id in
+                Button("Turn Off Fast Sync") { model.apply(.fastSyncOff, to: id) }
+                    .keyboardShortcut(.defaultAction)
+                Button("Not Now", role: .cancel) {}
+            } message: { _ in
+                Text("Part of it waited more than a minute for another part. With Fast Sync on, that can leave textures blurry, loading screens stuck or sounds missing. Turning Fast Sync off for this game usually fixes it; you can turn it back on in its settings, and Troubleshoot keeps this suggestion.")
+            }
             .alert("Also add \(model.pairOffer?.role.label?.lowercased() ?? "the other program")?",
                    isPresented: Binding(get: { model.pairOffer != nil }, set: { if !$0 { model.pairOffer = nil } }),
                    presenting: model.pairOffer) { offer in
@@ -1162,6 +1172,10 @@ struct GameSettingsView: View {
                     }
                     if tab == .graphics {
                         Section {
+                            if game.wrappedValue.graphics.hasDX9Fallback {
+                                Toggle("Use DirectX 9", isOn: game.settings.useDX9)
+                                    .info("Makes this \(game.wrappedValue.graphics.label) \(game.wrappedValue.noun) use its older DirectX 9 renderer, for games with no setting of their own to switch. Ferry hides DirectX 10 and 11 from it and starts it with -dx9. Try it if the \(game.wrappedValue.noun) crashes or draws wrong; turn it off if it won't start, since not every game still has a DirectX 9 renderer.")
+                            }
                             Toggle(model.resolvedEngine(game.wrappedValue) == .mach9 ? "MetalFX upscaling" : "DLSS via MetalFX", isOn: game.settings.metalFX)
                                 .info(model.resolvedEngine(game.wrappedValue) == .mach9
                                       ? "Renders at 75% resolution and upscales with MetalFX for a higher frame rate."
@@ -1272,7 +1286,7 @@ struct GameSettingsView: View {
                                             .info("Gives this 32-bit \(game.wrappedValue.noun) 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the \(game.wrappedValue.noun) won't start.")
                                     }
                                 }
-                                if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) && model.resolvedEngine(game.wrappedValue) != .mach9 {
+                                if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.drawsWith) && model.resolvedEngine(game.wrappedValue) != .mach9 {
                                     Toggle("DirectX 9 via DXVK", isOn: game.settings.dxvkD3D9)
                                         .info("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit programs use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
                                     if game.wrappedValue.settings.dxvkD3D9 {
@@ -1305,7 +1319,7 @@ struct GameSettingsView: View {
                                         .info("How much video memory the \(game.wrappedValue.noun) is told it has. On Macs with 8 GB or less, games told they have lots keep every texture loaded until macOS runs out of memory, which makes them stutter or play in slow motion. Raise it if a game hides graphics options or won't start.")
                                     }
                                 }
-                                if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.graphics) {
+                                if [GraphicsAPI.dx9, .unknown].contains(game.wrappedValue.drawsWith) {
                                     Picker("Faster screen copies", selection: game.settings.drawCopies) {
                                         Text(model.drawsCopies(game.wrappedValue) ? "Automatic (on)" : "Automatic (off)").tag(Bool?.none)
                                         Text("On").tag(Bool?.some(true))

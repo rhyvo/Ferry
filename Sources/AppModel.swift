@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     @Published var componentStatus: [Component: ComponentStatus] = [:]
     @Published var installingComponent: Component? = nil
     @Published var rovPrompt: UUID? = nil
+    @Published var stallPrompt: UUID? = nil
     @Published var installedOffer: InstalledOffer? = nil
     @Published var pairOffer: PairOffer? = nil
     private let backdrop = FullscreenBackdrop()
@@ -299,7 +300,7 @@ final class AppModel: ObservableObject {
     func recommendedEngine(_ g: Game) -> EngineID {
         let isExe = URL(fileURLWithPath: g.exePath).pathExtension.lowercased() == "exe"
         let framework = (g.framework?.isEmpty ?? true) ? nil : g.framework
-        return EngineAdvisor.pick(arch: g.arch, graphics: g.graphics, framework: framework, isExe: isExe, rosetta: runtimes.rosetta).engine
+        return EngineAdvisor.pick(arch: g.arch, graphics: g.drawsWith, framework: framework, isExe: isExe, rosetta: runtimes.rosetta).engine
     }
 
     static var metalSharpRuns32bit: Bool { Platform.metalSharpRuns32bit }
@@ -312,13 +313,13 @@ final class AppModel: ObservableObject {
     }
 
     func fallbackOrder(for g: Game) -> [EngineID] {
-        EngineAdvisor.fallbacks(after: recommendedEngine(g), arch: g.arch, graphics: g.graphics, rosetta: runtimes.rosetta)
+        EngineAdvisor.fallbacks(after: recommendedEngine(g), arch: g.arch, graphics: g.drawsWith, rosetta: runtimes.rosetta)
     }
 
     func subtitle(for g: Game) -> String {
         let engine = resolvedEngine(g)
         let engineText = g.settings.engine == .auto ? "\(engine.short) (Automatic)" : engine.short
-        var parts = (g.graphics == .unknown ? [] : [g.graphics.label]) + [g.arch.label, engineText]
+        var parts = (g.drawsWith == .unknown ? [] : [g.drawsWith.label]) + [g.arch.label, engineText]
         let owner = environmentOwner(of: g)
         if owner.id != g.id { parts.append("in \(owner.name)") }
         return parts.joined(separator: " · ")
@@ -479,6 +480,9 @@ final class AppModel: ObservableObject {
         }
 
         for name in vsyncHelpers(g, engine: engine) + padHelpers(g) { overrides = Self.nativeFirst(name, in: overrides) }
+        if g.drawsWith != g.graphics {
+            overrides = Self.setting(["d3d10", "d3d10_1", "d3d10core", "d3d11", "dxgi"], to: "", in: overrides)
+        }
         if !padHelpers(g).isEmpty { env["FERRY_PAD_MAP"] = PadMap.current }
         for o in nativeXAudio2Overrides(g, engine: engine, prefix: prefix) + modOverrides(g) {
             overrides = overrides.isEmpty ? o : overrides + ";" + o
@@ -491,7 +495,7 @@ final class AppModel: ObservableObject {
             }
         }
         if engine == .mach9 {
-            mach9Environment(&env, settings: s, frameCap: cap, overrides: overrides, graphics: g.graphics, arch: g.arch)
+            mach9Environment(&env, settings: s, frameCap: cap, overrides: overrides, graphics: g.drawsWith, arch: g.arch)
         } else if !overrides.isEmpty {
             env["WINEDLLOVERRIDES"] = overrides
         }
@@ -637,7 +641,7 @@ final class AppModel: ObservableObject {
             g.applied[kind.rawValue] = nil
         }
 
-        let dpi = g.settings.windowsDPI(graphics: g.graphics)
+        let dpi = g.settings.windowsDPI(graphics: g.drawsWith)
         let signature = g.settings.registrySignature + "|dpi\(dpi)" + (kind == .mach9 ? "|virtual-modes" : "") + "|pads-as-xbox"
         if g.applied[kind.rawValue] != signature {
             status = "Applying settings…"
@@ -727,6 +731,18 @@ final class AppModel: ObservableObject {
             + ((try? fm.contentsOfDirectory(atPath: dir.deletingLastPathComponent().path)) ?? [])
         let antiCheat = ["easyanticheat", "battleye", "beservice", "vgk", "xigncode", "gameguard", "eaanticheat", "ace-base"]
         return names.contains { name in antiCheat.contains { name.lowercased().contains($0) } }
+    }
+
+    private func checkForStall(_ id: UUID) {
+        guard let g = game(id), g.settings.fastSync, !g.stallPrompted else { return }
+        let log = logURL(id, "game")
+        Task {
+            let stalled = await Task.detached { LogDoctor.diagnose(LogDoctor.read(log), next: nil).contains { $0.fix == .fastSyncOff } }.value
+            guard stalled, var g = game(id), g.settings.fastSync, !g.stallPrompted else { return }
+            g.stallPrompted = true
+            update(g)
+            if running.isEmpty && rovPrompt == nil { stallPrompt = id }
+        }
     }
 
     private func checkROVReport(_ id: UUID) {
@@ -833,11 +849,11 @@ final class AppModel: ObservableObject {
     }
 
     func drawsCopies(_ g: Game) -> Bool {
-        g.settings.drawCopies ?? (g.graphics == .dx9 || (g.framework == "Clickteam Fusion" && g.graphics == .unknown))
+        g.settings.drawCopies ?? (g.drawsWith == .dx9 || (g.framework == "Clickteam Fusion" && g.drawsWith == .unknown))
     }
 
     func usesD3D9Helper(_ g: Game) -> Bool {
-        drawsCopies(g) || (frameCap(g) != nil && g.graphics == .dx9)
+        drawsCopies(g) || (frameCap(g) != nil && g.drawsWith == .dx9)
     }
 
     func frameCap(_ g: Game) -> Int? {
@@ -854,33 +870,35 @@ final class AppModel: ObservableObject {
         let engine = resolvedEngine(g), s = g.settings
         if engine == .dxvk || (s.dxvkD3D9 && engine != .mach9) { return true }
         if engine == .mach9 && s.mach9Direct3D != "wined3d" { return true }
-        if engine == .mullion && [.dx10, .dx11, .dx12].contains(g.graphics) && ["", "dxvk"].contains(s.metalSharpBackend) { return true }
-        if g.graphics == .dx9 { return true }
-        if [.d3dmetal, .wined3d].contains(engine) && [.dx10, .dx11, .dx12, .unknown].contains(g.graphics) { return helpersAllowed(g) }
+        if engine == .mullion && [.dx10, .dx11, .dx12].contains(g.drawsWith) && ["", "dxvk"].contains(s.metalSharpBackend) { return true }
+        if g.drawsWith == .dx9 { return true }
+        if [.d3dmetal, .wined3d].contains(engine) && [.dx10, .dx11, .dx12, .unknown].contains(g.drawsWith) { return helpersAllowed(g) }
         return false
     }
 
     func vsyncHelpers(_ g: Game, engine: EngineID) -> [String] {
         guard frameCap(g) != nil, helpersAllowed(g) else { return [] }
         switch engine {
-        case .d3dmetal: return [.dx10, .dx11, .unknown].contains(g.graphics) ? ["d3d11"] : []
-        case .wined3d, .auto: return [.dx10, .dx11, .dx12, .unknown].contains(g.graphics) ? ["dxgi"] : []
+        case .d3dmetal: return [.dx10, .dx11, .unknown].contains(g.drawsWith) ? ["d3d11"] : []
+        case .wined3d, .auto: return [.dx10, .dx11, .dx12, .unknown].contains(g.drawsWith) ? ["dxgi"] : []
         default: return []
         }
     }
 
     func usesVSyncD3D12(_ g: Game, engine: EngineID) -> Bool {
-        engine == .d3dmetal && frameCap(g) != nil && [.dx12, .unknown].contains(g.graphics) && helpersAllowed(g)
+        engine == .d3dmetal && frameCap(g) != nil && [.dx12, .unknown].contains(g.drawsWith) && helpersAllowed(g)
     }
 
-    static func nativeFirst(_ name: String, in overrides: String) -> String {
+    static func nativeFirst(_ name: String, in overrides: String) -> String { setting([name], to: "n,b", in: overrides) }
+
+    static func setting(_ names: [String], to mode: String, in overrides: String) -> String {
         var groups: [String] = overrides.split(separator: ";").compactMap { group in
-            let parts = group.split(separator: "=", maxSplits: 1)
+            let parts = group.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { return String(group) }
-            let dlls = parts[0].split(separator: ",").filter { $0 != name }
+            let dlls = parts[0].split(separator: ",").filter { !names.contains(String($0)) }
             return dlls.isEmpty ? nil : dlls.joined(separator: ",") + "=" + parts[1]
         }
-        groups.append("\(name)=n,b")
+        groups.append(names.joined(separator: ",") + "=" + mode)
         return groups.joined(separator: ";")
     }
 
@@ -1005,6 +1023,7 @@ final class AppModel: ObservableObject {
         default: args = [exe.path]
         }
         args += splitArguments(p.game.settings.arguments)
+        if p.game.drawsWith != p.game.graphics && !args.contains(where: { $0.lowercased() == "-dx9" }) { args.append("-dx9") }
 
         let process = Process()
         let gameMode = (game(p.game.id) ?? p.game).usesGameMode
@@ -1128,6 +1147,7 @@ final class AppModel: ObservableObject {
             await endLeftoverWine()
         }
         checkROVReport(id)
+        checkForStall(id)
         discordGameEnded(id)
         let stoppedByUser = stopping.remove(id) != nil
         let crashed = !stoppedByUser && status != 0 && seconds < 20

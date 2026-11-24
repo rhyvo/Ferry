@@ -7,12 +7,13 @@ struct TroubleshootView: View {
     let gameID: UUID
 
     enum Symptom: String, CaseIterable, Identifiable {
-        case blackScreen, blackObjects, crashes, slow, sound, blankLauncher, mouseStuck, pointerShows
+        case blackScreen, blackObjects, blurryTextures, crashes, slow, sound, blankLauncher, mouseStuck, pointerShows
         var id: String { rawValue }
         var title: String {
             switch self {
             case .blackScreen: return "The screen is black, but there's sound"
             case .blackObjects: return "Objects or effects are black, or take ages to appear"
+            case .blurryTextures: return "Textures are blurry, grey or low-detail"
             case .crashes: return "It crashes or closes"
             case .slow: return "It's slow or stutters"
             case .sound: return "The sound crackles"
@@ -25,6 +26,7 @@ struct TroubleshootView: View {
             switch self {
             case .blackScreen: return "rectangle.fill"
             case .blackObjects: return "cube.transparent"
+            case .blurryTextures: return "photo"
             case .crashes: return "xmark.octagon"
             case .slow: return "tortoise"
             case .sound: return "speaker.wave.2"
@@ -133,12 +135,28 @@ struct TroubleshootView: View {
         case .blackObjects:
             note("The first time a game needs a material or effect, its shader has to be translated for Metal and built. Until it's ready, many games draw nothing there. It gets faster every session: quit from the game's own menu so the built shaders are saved.")
             if engine == .d3dmetal { hideROVStep(g, first: false) }
-            if engine == .mach9 && g.arch != .x86 && [.dx11, .dx12].contains(g.graphics) && model.runtimes.rosetta {
+            if engine == .mach9 && g.arch != .x86 && [.dx11, .dx12].contains(g.drawsWith) && model.runtimes.rosetta {
                 engineStep(g, to: .d3dmetal, why: "D3DMetal turns DirectX 11 and 12 shaders straight into Metal with Apple's own converter, much faster than Mach9's route through Vulkan.")
             }
             frameLimitStep(g, why: "Leaves the processor and graphics room to build shaders while you play.")
+        case .blurryTextures:
+            note("Many games start with low-detail textures and swap in sharp ones while you play. When they stay blurry, the part of the game that loads them is stuck, or the game thinks there's too little video memory.")
+            toggleStep(g, title: "Fast Sync",
+                       detail: "With Fast Sync on, a busy part of the \(g.noun) can keep a shared lock to itself, so the part that loads sharp textures never gets its turn. Turning it off fixed textures that stayed blurry in testing; it can cost a little speed.",
+                       key: "fastsync", isOn: g.settings.fastSync, suggest: false) { $0.settings.fastSync.toggle() }
+            if g.settings.dxvkD3D9 && engine != .mach9 && g.settings.dxvkVideoMemory != 2048 {
+                action("Video memory (DXVK)", detail: "Games told they have little video memory pick low-detail textures. This tells it there's 2 GB.",
+                       key: "dxvkmem", label: "Use 2 GB") { change(g) { $0.settings.dxvkVideoMemory = 2048 } }
+            }
+            note("Check the \(g.noun)'s own texture quality setting too: changing its DirectX version or graphics card can reset it to low.")
+            switchEngineStep(g)
         case .crashes:
             if engine == .d3dmetal { nvidiaStep(g) }
+            if g.graphics.hasDX9Fallback {
+                toggleStep(g, title: "Use DirectX 9",
+                           detail: "Many \(g.graphics.label) games from around 2006–2010 also have a DirectX 9 renderer, which every engine runs more reliably. This hides DirectX 10 and 11 so the \(g.noun) uses it. Turn it off again if the \(g.noun) won't start, since not every game still has one.",
+                           key: "usedx9", isOn: g.settings.useDX9) { $0.settings.useDX9.toggle() }
+            }
             switchEngineStep(g)
             action("Show the log", detail: "The last lines usually say what went wrong.", key: "log", label: "Show Log") {
                 model.showLog(g.id, "game")
@@ -146,7 +164,7 @@ struct TroubleshootView: View {
         case .slow:
             lowPowerStep()
             frameLimitStep(g, why: "Steadier frame pacing, and less heat and battery use.")
-            if engine == .mach9 && g.graphics == .dx9 {
+            if engine == .mach9 && g.drawsWith == .dx9 {
                 toggleStep(g, title: "MetalFX upscaling", detail: "Renders at 75% resolution and upscales with MetalFX.", key: "metalfx",
                            isOn: g.settings.metalFX) { $0.settings.metalFX.toggle() }
             }
@@ -213,6 +231,12 @@ struct TroubleshootView: View {
                         Button(model.installingComponent == .webView2 ? "Installing…" : "Install WebView2") { model.installComponentNow(.webView2) }
                             .disabled(model.installingComponent != nil || model.setupRunning || model.updating)
                     }
+                case .useDX9:
+                    Button(g.settings.useDX9 ? "Turned On" : "Use DirectX 9") { model.apply(f.fix, to: g.id); done.insert("log-" + f.id) }
+                        .disabled(g.settings.useDX9)
+                case .fastSyncOff:
+                    Button(g.settings.fastSync ? "Turn Off Fast Sync" : "Turned Off") { model.apply(f.fix, to: g.id); done.insert("log-" + f.id) }
+                        .disabled(!g.settings.fastSync)
                 case .none:
                     EmptyView()
                 }

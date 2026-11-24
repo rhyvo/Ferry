@@ -5,6 +5,8 @@ struct LogFinding: Identifiable, Equatable {
         case library(Component)
         case engine(EngineID)
         case webView2
+        case fastSyncOff
+        case useDX9
         case none
     }
     let id: String
@@ -80,6 +82,16 @@ enum LogDoctor {
                                detail: "It checks for Steam when it starts. Add Steam to Ferry, then add this game inside Steam's environment and start it from there.",
                                fix: .none, evidence: line))
             }
+            if lower.contains("rtlpwaitforcriticalsection"), lower.contains("wait timed out") {
+                add(LogFinding(id: "stall", title: "Part of it was stuck waiting for over a minute",
+                               detail: "One part of the program waited more than a minute for another. With Fast Sync on, a busy part can keep a shared lock to itself, so the waiting part never gets its turn: textures stay blurry because the sharp ones never load, loading screens hang, or sounds go missing. Turning off Fast Sync for this program usually fixes it; if it doesn't, turn it back on.",
+                               fix: .fastSyncOff, evidence: line))
+            }
+            if lower.contains("=>0"), let dll = capture(line, #"=>0 0x[0-9a-f]+ in (d3d10core|d3d10_1|d3d10|d3d11|dxgi) "#) {
+                add(LogFinding(id: "dx10crash", title: "It crashed inside DirectX 10/11",
+                               detail: "The crash happened in \(dll), the engine's translation of DirectX 10 and 11, not in the program. If it also has a DirectX 9 renderer, as many games from around 2006–2010 do, Use DirectX 9 avoids that translation.",
+                               fix: .useDX9, evidence: line))
+            }
             if ["easyanticheat", "battleye", "beservice"].contains(where: lower.contains) {
                 add(LogFinding(id: "anticheat", title: "The game uses anti-cheat",
                                detail: "Anti-cheat (EasyAntiCheat, BattlEye) doesn't run under Wine on a Mac, so online games that require it usually can't be played. Some let you play offline without it.",
@@ -105,7 +117,8 @@ enum LogDoctor {
             }
         }
 
-        for f in others { add(f) }
+        let crashed = log.contains("wine: Unhandled") || log.contains("Unhandled exception")
+        for f in others where !(crashed && f.fix == .fastSyncOff) { add(f) }
 
         if findings.isEmpty, let next,
            let line = log.split(whereSeparator: \.isNewline).first(where: { $0.contains("wine: Unhandled") }) {
@@ -161,7 +174,8 @@ extension AppModel {
         let next = order.firstIndex(of: current).flatMap { $0 + 1 < order.count ? order[$0 + 1] : nil }
             ?? order.first(where: { $0 != current })
         return LogDoctor.diagnose(LogDoctor.read(logURL(g.id, "game")), next: g.sharedWith == nil ? next : nil)
-            .filter { !($0.fix == .webView2 && g.settings.webView2) }
+            .filter { !($0.fix == .webView2 && g.settings.webView2) && !($0.fix == .fastSyncOff && !g.settings.fastSync)
+                && !($0.fix == .useDX9 && (g.settings.useDX9 || !g.graphics.hasDX9Fallback)) }
     }
 
     func apply(_ fix: LogFinding.Fix, to id: UUID) {
@@ -176,6 +190,14 @@ extension AppModel {
         case .webView2:
             guard webView2Installed, var g = game(id) else { return }
             g.settings.webView2 = true
+            update(g)
+        case .fastSyncOff:
+            guard var g = game(id) else { return }
+            g.settings.fastSync = false
+            update(g)
+        case .useDX9:
+            guard var g = game(id) else { return }
+            g.settings.useDX9 = true
             update(g)
         case .none:
             break
