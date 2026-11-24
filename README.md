@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="media/ferry-demo.gif" alt="Ferry's library, game settings, engines, components, Task Manager and Storage" width="100%">
+  <img src="media/ferry-demo.gif" alt="Ferry's library, Compatibility Check, game settings, Troubleshoot, controller mapping, Task Manager, engines, components, Storage and General settings" width="100%">
 </p>
 
 **Ferry runs Windows games and programs on Apple silicon Macs.** Drop in a game and press Play. Ferry reads the game, picks the best way to run it, installs what it needs, and gets out of the way. It's free, and it's a small native Mac app.
