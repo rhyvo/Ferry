@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rhyvo/Ferry/releases"><img src="https://raw.githubusercontent.com/rhyvo/Ferry/badges/downloads.svg" alt="Total downloads"></a>
-  <a href="https://github.com/rhyvo/Ferry/stargazers"><img src="https://raw.githubusercontent.com/rhyvo/Ferry/badges/stars.svg" alt="GitHub stars"></a>
+  <a href="https://github.com/rhyvo/Ferry/releases"><img src="https://raw.githubusercontent.com/rhyvo/Ferry/refs/heads/badges/downloads.svg" alt="Total downloads"></a>
+  <a href="https://github.com/rhyvo/Ferry/stargazers"><img src="https://raw.githubusercontent.com/rhyvo/Ferry/refs/heads/badges/stars.svg" alt="GitHub stars"></a>
   <a href="https://www.youtube.com/@rhyvo_ferry"><img src="https://img.shields.io/badge/YouTube-rhyvo__ferry-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube: rhyvo_ferry"></a>
   <a href="https://ko-fi.com/rhyvo"><img src="https://img.shields.io/badge/Ko--fi-Support%20Ferry-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support Ferry on Ko-fi"></a>
 </p>
