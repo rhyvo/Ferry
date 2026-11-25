@@ -313,6 +313,8 @@ struct StorageView: View {
     @State private var confirming = false
     @State private var free: Int64 = 0
     @State private var onlyDeletable = false
+    @State private var hoveredKind: Category? = nil
+    @State private var shownKind: Category? = nil
     @AppStorage("storageSort") private var sort = "size"
 
     private enum Category: CaseIterable {
@@ -398,27 +400,17 @@ struct StorageView: View {
             }
 
             Divider()
-            HStack {
-                Button("Select Unused Items") {
-                    selected = Set(items.filter { $0.recommended && !isRunning($0) }.map(\.id))
-                }
-                .help("Selects old environments, leftovers and downloaded installers: nothing in use, and no saves.")
-                if !selected.isEmpty {
-                    Button("Deselect All") { selected = [] }
-                }
-                Spacer()
-                if !selected.isEmpty {
-                    Text("Frees \(DiskUsage.text(selectedBytes))").foregroundStyle(.secondary).monospacedDigit()
-                }
-                Button(selected.count > 1 ? "Delete \(selected.count) Items…" : "Delete…", role: .destructive) { confirming = true }
-                    .disabled(selected.isEmpty)
-                if showsDone {
-                    Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            ViewThatFits(in: .horizontal) {
+                HStack { selectButtons; Spacer(); deleteButtons }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack { selectButtons }
+                    HStack { Spacer(); deleteButtons }
                 }
             }
             .padding(16)
         }
-        .frame(minWidth: 680, minHeight: 500)
+        .frame(minWidth: showsDone ? 560 : 680, maxWidth: showsDone ? 560 : .infinity,
+               minHeight: showsDone ? 540 : 500, maxHeight: showsDone ? 540 : .infinity)
         .task { await reload() }
         .alert("Delete \(selected.count) item\(selected.count == 1 ? "" : "s")?", isPresented: $confirming) {
             Button("Delete", role: .destructive) {
@@ -432,46 +424,117 @@ struct StorageView: View {
         }
     }
 
+    private var selectButtons: some View {
+        Group {
+            Button("Select Unused Items") {
+                selected = Set(items.filter { $0.recommended && !isRunning($0) }.map(\.id))
+            }
+            .help("Selects old environments, leftovers and downloaded installers: nothing in use, and no saves.")
+            if !selected.isEmpty {
+                Button("Deselect All") { selected = [] }
+            }
+        }
+    }
+
+    private var deleteButtons: some View {
+        Group {
+            if !selected.isEmpty {
+                Text("Frees \(DiskUsage.text(selectedBytes))").foregroundStyle(.secondary).monospacedDigit()
+            }
+            Button(selected.count > 1 ? "Delete \(selected.count) Items…" : "Delete…", role: .destructive) { confirming = true }
+                .disabled(selected.isEmpty)
+            if showsDone {
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+    }
+
     private var summary: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                if showsDone { Text("Storage").font(.title2.weight(.semibold)) }
-                if measuring {
-                    ProgressView().controlSize(.small)
-                    Text("Measuring… \(DiskUsage.text(ferryTotal)) so far").foregroundStyle(.secondary).monospacedDigit()
-                } else {
-                    Text("Ferry uses \(DiskUsage.text(ferryTotal))").font(.headline).monospacedDigit()
-                    Text("· \(DiskUsage.text(free)) free on this Mac").foregroundStyle(.secondary).monospacedDigit()
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) { totals; Spacer(); filters }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) { totals }
+                    HStack { Spacer(); filters }
                 }
-                Spacer()
-                Picker("Sort By", selection: $sort) {
-                    Text("Size Used").tag("size")
-                    Text("Name").tag("name")
-                }
-                .fixedSize()
-                .help("Order the cards, and the items in each, by how much space they use or by name")
-                Picker("Show", selection: $onlyDeletable) {
-                    Text("All Items").tag(false)
-                    Text("Can Be Deleted").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .help("Show everything Ferry keeps, or only what you can delete")
             }
             usageBar
-            HStack(spacing: 16) {
-                ForEach(Category.allCases, id: \.self) { c in
-                    HStack(spacing: 5) {
-                        Circle().fill(c.color).frame(width: 8, height: 8)
-                        Text(c.title)
-                        Text(measuring && bytes(of: c) == 0 ? "…" : DiskUsage.text(bytes(of: c)))
-                            .foregroundStyle(.secondary).monospacedDigit()
-                    }
-                    .font(.caption)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { legend(Category.allCases) }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) { legend([.games, .engines]) }
+                    HStack(spacing: 4) { legend([.templates, .other]) }
                 }
             }
-            .accessibilityElement(children: .combine)
+            .padding(.leading, -6)
+        }
+        .animation(.easeOut(duration: 0.15), value: hoveredKind)
+        .animation(.easeOut(duration: 0.15), value: shownKind)
+    }
+
+    private func strength(_ c: Category) -> Double {
+        let active = hoveredKind ?? shownKind
+        return active == nil || active == c ? 1 : 0.3
+    }
+
+    private func hover(_ c: Category, _ inside: Bool) {
+        if inside { hoveredKind = c } else if hoveredKind == c { hoveredKind = nil }
+    }
+
+    private func pick(_ c: Category) { shownKind = shownKind == c ? nil : c }
+
+    private var totals: some View {
+        Group {
+            if showsDone { Text("Storage").font(.title2.weight(.semibold)) }
+            if measuring {
+                ProgressView().controlSize(.small)
+                Text("Measuring… \(DiskUsage.text(ferryTotal)) so far").foregroundStyle(.secondary).monospacedDigit()
+            } else {
+                Text("Ferry uses \(DiskUsage.text(ferryTotal))").font(.headline).monospacedDigit()
+                Text("· \(DiskUsage.text(free)) free on this Mac").foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+    }
+
+    private var filters: some View {
+        Group {
+            Picker("Sort By", selection: $sort) {
+                Text("Size Used").tag("size")
+                Text("Name").tag("name")
+            }
+            .fixedSize()
+            .help("Order the cards, and the items in each, by how much space they use or by name")
+            Picker("Show", selection: $onlyDeletable) {
+                Text("All Items").tag(false)
+                Text("Can Be Deleted").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("Show everything Ferry keeps, or only what you can delete")
+        }
+    }
+
+    private func legend(_ categories: [Category]) -> some View {
+        ForEach(categories, id: \.self) { c in
+            Button { pick(c) } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(c.color).frame(width: 8, height: 8)
+                    Text(c.title)
+                    Text(measuring && bytes(of: c) == 0 ? "…" : DiskUsage.text(bytes(of: c)))
+                        .foregroundStyle(.secondary).monospacedDigit()
+                }
+                .font(.caption)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(c.color.opacity((hoveredKind ?? shownKind) == c ? 0.22 : 0)))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .opacity(strength(c) == 1 ? 1 : 0.55)
+            .onHover { hover(c, $0) }
+            .help(shownKind == c ? "Stop highlighting" : "Highlight everything that's \(c.title.lowercased())")
+            .accessibilityAddTraits(shownKind == c ? .isSelected : [])
         }
     }
 
@@ -480,7 +543,14 @@ struct StorageView: View {
             HStack(spacing: 1) {
                 ForEach(Category.allCases, id: \.self) { c in
                     let share = ferryTotal > 0 ? CGFloat(bytes(of: c)) / CGFloat(ferryTotal) : 0
-                    if share > 0 { c.color.frame(width: max(2, (geo.size.width - 3) * share)) }
+                    if share > 0 {
+                        c.color.opacity(strength(c))
+                            .frame(width: max(2, (geo.size.width - 3) * share))
+                            .contentShape(Rectangle())
+                            .onHover { hover(c, $0) }
+                            .onTapGesture { pick(c) }
+                            .help(c.title)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -505,6 +575,7 @@ struct StorageView: View {
             groupItems.sort { ($0.bytes ?? 0) > ($1.bytes ?? 0) }
         }
         let largest = groupItems.compactMap(\.bytes).max() ?? 0
+        let hasShownKind = shownKind == nil || groupItems.contains { category($0) == shownKind }
         return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
@@ -520,7 +591,7 @@ struct StorageView: View {
                         ForEach(Category.allCases, id: \.self) { c in
                             let bytes = groupItems.filter { category($0) == c }.reduce(Int64(0)) { $0 + ($1.bytes ?? 0) }
                             let share = ferryTotal > 0 ? CGFloat(bytes) / CGFloat(ferryTotal) : 0
-                            if share > 0 { c.color.frame(width: max(2, geo.size.width * share)) }
+                            if share > 0 { c.color.opacity(strength(c)).frame(width: max(2, geo.size.width * share)) }
                         }
                         Spacer(minLength: 0)
                     }
@@ -531,16 +602,22 @@ struct StorageView: View {
                 .accessibilityHidden(true)
             }
             .padding(14)
+            .opacity(hasShownKind ? 1 : 0.4)
             Divider().padding(.leading, 14)
             ForEach(groupItems) { item in
+                let kind = category(item)
                 row(item, largest: largest)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
+                    .background(shownKind == kind ? kind.color.opacity(0.14) : .clear)
+                    .opacity(shownKind == nil || shownKind == kind ? 1 : 0.4)
                 if item.id != groupItems.last?.id { Divider().padding(.leading, 44) }
             }
         }
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.secondary.opacity(0.07)))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.secondary.opacity(0.12)))
+        .animation(.easeOut(duration: 0.15), value: shownKind)
     }
 
     @ViewBuilder
@@ -568,7 +645,11 @@ struct StorageView: View {
                     .disabled(isRunning(item))
                     .accessibilityLabel("Select \(item.title)\(item.group == "Ferry" ? "" : ", \(item.group)")")
             } else {
-                Color.clear.frame(width: 14, height: 14).accessibilityHidden(true)
+                Toggle(item.title, isOn: .constant(false))
+                    .labelsHidden()
+                    .disabled(true)
+                    .help("Can't be picked for deleting here. \(item.note)")
+                    .accessibilityLabel("\(item.title) can't be deleted")
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).fontWeight(.medium)

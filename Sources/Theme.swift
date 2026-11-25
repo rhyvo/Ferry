@@ -137,10 +137,10 @@ struct ThemeColorSetting: View {
     var body: some View {
         LabeledContent("Theme color") {
             HStack(spacing: 10) {
-                if !stored.isEmpty {
-                    Button("Use Mac's Accent Color") { stored = "" }
-                        .help("Go back to the accent color chosen in System Settings ▸ Appearance")
-                }
+                Button("Use Mac's Accent Color") { stored = "" }
+                    .disabled(stored.isEmpty)
+                    .help(stored.isEmpty ? "Ferry already uses the accent color chosen in System Settings ▸ Appearance."
+                          : "Go back to the accent color chosen in System Settings ▸ Appearance")
                 ColorPicker("Theme color", selection: Binding(
                     get: { Theme.tint(stored) ?? Color(nsColor: .controlAccentColor) },
                     set: { stored = Theme.encode($0) }), supportsOpacity: false)

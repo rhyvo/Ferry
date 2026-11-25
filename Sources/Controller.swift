@@ -192,18 +192,18 @@ struct ControllerView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 320)
-                    if mode == .keyboard {
-                        Toggle("Play with the controller as a keyboard and mouse", isOn: $keysOn)
-                            .help("For games that don't support controllers. Turn it off for games that do, or they get both.")
-                        HStack {
-                            Text("Mouse speed")
-                            Slider(value: Binding(get: { Double(keyBinds["speed"] ?? "8") ?? 8 },
-                                                  set: { var b = keyBinds; b["speed"] = String(Int($0.rounded())); keys = PadKeys.text(b) }),
-                                   in: 1...20)
-                        }
-                        .frame(width: 300)
-                        .help("How fast a stick set to Mouse moves the pointer")
+                    Toggle("Play with the controller as a keyboard and mouse", isOn: $keysOn)
+                        .help("For games that don't support controllers. Turn it off for games that do, or they get both.")
+                    HStack {
+                        Text("Mouse speed").foregroundStyle(keysOn ? .primary : .tertiary)
+                        Slider(value: Binding(get: { Double(keyBinds["speed"] ?? "8") ?? 8 },
+                                              set: { var b = keyBinds; b["speed"] = String(Int($0.rounded())); keys = PadKeys.text(b) }),
+                               in: 1...20)
                     }
+                    .frame(width: 300)
+                    .disabled(!keysOn)
+                    .help(keysOn ? "How fast a stick set to Mouse moves the pointer"
+                          : "Needs Play with the controller as a keyboard and mouse on.")
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)

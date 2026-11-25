@@ -73,7 +73,7 @@ struct ModsView: View {
             Divider()
             footer
         }
-        .frame(width: 640, height: 620)
+        .frame(width: 560, height: 560)
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first(where: \.isFileURL) else { return false }
             addOwnFile(url)
@@ -229,21 +229,14 @@ struct ModsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-            HStack(spacing: 8) {
-                if r.reviewed {
-                    Button("PCGamingWiki Page") { openWikiPage(g) }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    resultSource(r, g)
+                    if r.link != nil { Spacer(); resultInstall(r, g) }
                 }
-                if r.link != nil {
-                    if let host = Self.host(of: r.link) { Text("from \(host)").font(.caption).foregroundStyle(.secondary) }
-                    Spacer()
-                    if working == r.id { ProgressView().controlSize(.small) }
-                    Button("Install Automatically") { autoInstall(r, g) }
-                        .disabled(!r.canAutoInstall || working != nil)
-                        .help(r.canAutoInstall ? "Download it, check where it goes, then confirm"
-                              : r.steps > 1 ? "This fix has several steps, so Ferry can't do it in one go. Follow the steps above; \"Install Manually\" downloads its file."
-                              : "This one can only be downloaded from its web page. Use \"Install Manually\".")
-                    Button("Install Manually") { manualInstall(r, g) }
-                        .disabled(working != nil)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) { resultSource(r, g) }
+                    if r.link != nil { HStack(spacing: 8) { Spacer(); resultInstall(r, g) } }
                 }
             }
             if let note = notes[r.id] {
@@ -252,6 +245,28 @@ struct ModsView: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
+    }
+
+    @ViewBuilder
+    private func resultSource(_ r: ModResult, _ g: Game) -> some View {
+        if r.reviewed {
+            Button("PCGamingWiki Page") { openWikiPage(g) }
+        }
+        if r.link != nil, let host = Self.host(of: r.link) {
+            Text("from \(host)").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func resultInstall(_ r: ModResult, _ g: Game) -> some View {
+        if working == r.id { ProgressView().controlSize(.small) }
+        Button("Install Automatically") { autoInstall(r, g) }
+            .disabled(!r.canAutoInstall || working != nil)
+            .help(r.canAutoInstall ? "Download it, check where it goes, then confirm"
+                  : r.steps > 1 ? "This fix has several steps, so Ferry can't do it in one go. Follow the steps above; \"Install Manually\" downloads its file."
+                  : "This one can only be downloaded from its web page. Use \"Install Manually\".")
+        Button("Install Manually") { manualInstall(r, g) }
+            .disabled(working != nil)
     }
 
     private static func host(of link: ModLink?) -> String? {

@@ -112,6 +112,25 @@ final class AppModel: ObservableObject {
 
     func game(_ id: UUID) -> Game? { games.first { $0.id == id } }
 
+    func saveSettings(_ draft: Game) {
+        guard let live = game(draft.id) else { return update(draft) }
+        var g = draft
+        g.runtimesInstalled = live.runtimesInstalled
+        g.applied = live.applied
+        g.lastPlayed = live.lastPlayed
+        g.cncDdrawPlaced = live.cncDdrawPlaced
+        g.dxvkD3D9Placed = live.dxvkD3D9Placed
+        g.hideROVPlaced = live.hideROVPlaced
+        g.drawCopiesPlaced = live.drawCopiesPlaced
+        g.vsyncPlaced = live.vsyncPlaced
+        g.placedFiles = live.placedFiles
+        g.placedHashes = live.placedHashes
+        g.rovSeen = live.rovSeen
+        g.rovWatchLaunches = live.rovWatchLaunches
+        g.stallPrompted = live.stallPrompted
+        update(g)
+    }
+
     func update(_ game: Game) {
         guard let i = games.firstIndex(where: { $0.id == game.id }) else { return }
         let old = games[i]
@@ -356,6 +375,10 @@ final class AppModel: ObservableObject {
         if s.fastSync { env["WINEMSYNC"] = "1"; env["WINEESYNC"] = "1" }
         if s.advertiseAVX { env["ROSETTA_ADVERTISE_AVX"] = "1" }
         if s.metalHUD { env["MTL_HUD_ENABLED"] = "1" }
+        if !s.windowsLanguage.isEmpty {
+            env["LANG"] = s.windowsLanguage + ".UTF-8"
+            env["LC_ALL"] = s.windowsLanguage + ".UTF-8"
+        }
         let cap = frameCap(g)
         if let cap {
             env["FERRY_FPS"] = "\(cap)"
@@ -426,7 +449,23 @@ final class AppModel: ObservableObject {
         case .wined3d, .auto:
             overrides = "dxgi,d3d9,d3d10core,d3d11,d3d12=b"
         }
-        if s.cncDdraw { overrides += overrides.isEmpty ? "ddraw=n,b" : ";ddraw=n,b" }
+        if s.dgVoodoo && g.arch == .x86 {
+            overrides = Self.setting(["ddraw", "d3dimm"], to: "n,b", in: overrides)
+        } else if s.cncDdraw {
+            overrides += overrides.isEmpty ? "ddraw=n,b" : ";ddraw=n,b"
+        }
+        if g.arch == .x86 && s.nativeDirectMusic {
+            overrides = Self.setting(Self.loadOrderNames(Self.directMusicFiles), to: "n,b", in: overrides)
+        }
+        if g.arch == .x86 && s.nativeDirectPlay {
+            overrides = Self.setting(Self.loadOrderNames(Self.directPlayFiles), to: "n,b", in: overrides)
+        }
+        if usesUpstreamDXMT(g, engine: engine) {
+            overrides = Self.setting(["dxgi", "d3d10core", "d3d11"], to: "n,b", in: overrides)
+            if let cap {
+                env["DXMT_CONFIG"] = ["d3d11.preferredMaxFrameRate=\(cap)", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+            }
+        }
         if s.dxvkD3D9 && engine != .mach9 {
             overrides = overrides.replacingOccurrences(of: "d3d9,", with: "")
             overrides += overrides.isEmpty ? "d3d9=n,b" : ";d3d9=n,b"
@@ -698,12 +737,14 @@ final class AppModel: ObservableObject {
                 if autoRuntimes && p.game.sharedWith == nil && !p.game.runtimesInstalled.contains(p.kind.rawValue) {
                     _ = await installLibraries(p)
                 }
-                await applyCncDdraw(p)
+                await applyDDrawFixes(p)
+                await applyLegacyDirectX(p)
+                applyVSyncHelpers(p)
+                applyUpstreamDXMT(p)
                 await applyDXVKD3D9(p)
                 syncD3DMetal(p)
                 applyDrawCopies(p)
                 applyHideROV(p)
-                applyVSyncHelpers(p)
                 let ready = withWebView2(p)
                 await watchInstaller(p)
                 status = "Starting \(p.game.name)…"
@@ -877,7 +918,7 @@ final class AppModel: ObservableObject {
     }
 
     func vsyncHelpers(_ g: Game, engine: EngineID) -> [String] {
-        guard frameCap(g) != nil, helpersAllowed(g) else { return [] }
+        guard frameCap(g) != nil, helpersAllowed(g), !usesUpstreamDXMT(g, engine: engine) else { return [] }
         switch engine {
         case .d3dmetal: return [.dx10, .dx11, .unknown].contains(g.drawsWith) ? ["d3d11"] : []
         case .wined3d, .auto: return [.dx10, .dx11, .dx12, .unknown].contains(g.drawsWith) ? ["dxgi"] : []
@@ -987,10 +1028,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyCncDdraw(_ p: PreparedGame) async {
+    func applyCncDdraw(_ p: PreparedGame) async {
         guard var g = game(p.game.id) else { return }
         let target = URL(fileURLWithPath: g.exePath).deletingLastPathComponent().appendingPathComponent("ddraw.dll")
-        if g.settings.cncDdraw {
+        if g.settings.cncDdraw && !(g.settings.dgVoodoo && g.arch == .x86) {
             if let mod = modOwning(target, in: g) {
                 noteModOwns(target, mod, setting: "the old 2D game fix", game: g)
                 return

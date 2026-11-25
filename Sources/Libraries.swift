@@ -10,6 +10,7 @@ struct WinLibrary {
         case systemDLL(is64bit: Bool)
         case cacheOnly
         case directShowZip(folder: String)
+        case extractThenRun(inner: String, args: [String])
     }
 
     let name: String
@@ -21,6 +22,7 @@ struct WinLibrary {
     var githubRepo: String? = nil
     var githubAsset: ((String) -> Bool)? = nil
     var component: Component = .visualCpp
+    var sha256: String? = nil
 }
 
 extension AppModel {
@@ -84,6 +86,11 @@ extension AppModel {
         WinLibrary(name: "XNA Framework 4.0",
                    url: "https://download.microsoft.com/download/A/C/2/AC2C903B-E6E8-42C2-9FD7-BEBAC362A930/xnafx40_redist.msi",
                    file: "xnafx40_redist.msi", method: .msi, needs32bitWine: true, component: .xna),
+        WinLibrary(name: "Visual Basic 6 runtime",
+                   url: "https://web.archive.org/web/20070204154430id_/https://download.microsoft.com/download/5/a/d/5ad868a0-8ecd-4bb0-a882-fe53eb7ef348/VB6.0-KB290887-X86.exe",
+                   file: "VB6.0-KB290887-X86.exe", method: .extractThenRun(inner: "vbrun60sp6.exe", args: ["/Q"]),
+                   needs32bitWine: true, component: .vb6,
+                   sha256: "467b5a10c369865f2021d379fc0933cb382146b702bbca4bcb703fc86f4322bb"),
         WinLibrary(name: "OpenAL", url: "https://www.openal.org/downloads/oalinst.zip",
                    file: "oalinst.zip", method: .zip(inner: "oalinst.exe", args: ["/s"]), needs32bitWine: true, component: .openAL),
         WinLibrary(name: "PhysX (legacy games)",
@@ -100,6 +107,14 @@ extension AppModel {
         WinLibrary(name: "cnc-ddraw (old 2D game fix)", url: "", file: "cnc-ddraw.zip",
                    method: .cacheOnly, needs32bitWine: false,
                    githubRepo: "FunkyFr3sh/cnc-ddraw", githubAsset: { $0 == "cnc-ddraw.zip" }, component: .cncDdraw),
+        WinLibrary(name: "DirectX (February 2010) for DirectMusic and DirectPlay",
+                   url: "https://web.archive.org/web/20100205000000id_/https://download.microsoft.com/download/E/E/1/EE17FF74-6C45-4575-9CF4-7FC2597ACD18/directx_feb2010_redist.exe",
+                   file: "directx_feb2010_redist.exe", method: .cacheOnly, needs32bitWine: true, component: .legacyDirectX,
+                   sha256: "f6d191e89a963d7cca34f169d30f49eab99c1ed3bb92da73ec43617caaa1e93f"),
+        WinLibrary(name: "dgVoodoo2 (old 3D game fix)", url: "", file: "dgVoodoo2.zip", method: .cacheOnly, needs32bitWine: false,
+                   githubRepo: "dege-diosg/dgVoodoo2",
+                   githubAsset: { $0.hasPrefix("dgVoodoo2_") && $0.hasSuffix(".zip") && !$0.contains("_dbg") && !$0.contains("_dev") },
+                   component: .dgVoodoo),
         WinLibrary(name: "WebView2", url: "https://go.microsoft.com/fwlink/?linkid=2124701",
                    file: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe", method: .cacheOnly, needs32bitWine: true,
                    component: .webView2),
@@ -123,9 +138,14 @@ extension AppModel {
         return URL(string: found.asset.browserDownloadUrl)
     }
 
-    private func cachedFile(for lib: WinLibrary) async -> URL? {
-        guard let url = await downloadURL(for: lib) else { return nil }
-        return try? await runtimes.cachedInstaller(url, name: lib.file)
+    func cachedFile(for lib: WinLibrary) async -> URL? {
+        guard let url = await downloadURL(for: lib),
+              let file = try? await runtimes.cachedInstaller(url, name: lib.file) else { return nil }
+        if let expected = lib.sha256, ModFiles.sha256(file) != expected {
+            fm.removeIfPresent(file)
+            return nil
+        }
+        return file
     }
 
     func cachedCncDdrawDLL() -> URL? {
@@ -151,6 +171,8 @@ extension AppModel {
     func downloadWindowsLibraries() async -> [String] {
         var skipped: [String] = []
         for lib in Self.windowsLibraries where Self.isEnabled(lib) {
+            if lib.component == .legacyDirectX && cachedLegacyDirectX() != nil { continue }
+            if lib.component == .dgVoodoo && dgVoodooFiles() != nil { continue }
             if !runtimes.isCached(lib.file) { status = "Downloading \(lib.name)…" }
             if await cachedFile(for: lib) == nil { skipped.append(lib.name) }
         }
@@ -212,6 +234,20 @@ extension AppModel {
                 await Shell.run(wine.path, [file.path, "/Q", "/T:C:\\ferry-directx"], env: env, log: log)
                 await waitForWine()
                 await Shell.run(wine.path, [unpack.appendingPathComponent("DXSETUP.exe").path, "/silent"], env: env, log: log)
+                await waitForWine()
+                fm.removeIfPresent(unpack)
+
+            case .extractThenRun(let inner, let args):
+                let unpack = prefix.appendingPathComponent("drive_c/ferry-unpack")
+                fm.removeIfPresent(unpack)
+                try? fm.createDirectory(at: unpack, withIntermediateDirectories: true)
+                await Shell.run(wine.path, [file.path, "/Q", "/C", "/T:C:\\ferry-unpack"], env: env, log: log)
+                await waitForWine()
+                if let installer = fm.firstItem(under: unpack, where: { $0.lastPathComponent.lowercased() == inner.lowercased() }) {
+                    await Shell.run(wine.path, [installer.path] + args, env: env, log: log)
+                } else {
+                    skipped.append(lib.name)
+                }
                 await waitForWine()
                 fm.removeIfPresent(unpack)
 

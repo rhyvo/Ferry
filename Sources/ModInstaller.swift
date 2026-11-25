@@ -282,6 +282,9 @@ extension AppModel {
             let ferrysOwn = [(g.cncDdrawPlaced, "DirectDraw compatibility (cnc-ddraw)"),
                              (g.dxvkD3D9Placed, "DirectX 9 via DXVK"), (g.hideROVPlaced, "Hide ROV support"),
                              (g.drawCopiesPlaced, "Faster screen copies")]
+                + g.placedFiles.flatMap { feature, paths in
+                    paths.map { (Optional($0), feature == "dxmt" ? "DXMT (beta)" : "Old 3D game fix (dgVoodoo2)") }
+                }
             for copy in plan.copies {
                 for case let (placed?, setting) in ferrysOwn where ModLayout.samePath(URL(fileURLWithPath: placed), copy.to) {
                     throw FerryError("\(copy.to.lastPathComponent) is Ferry's own \(setting) file for this game. Turn that setting off first, or install this mod by hand.")

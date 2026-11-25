@@ -156,6 +156,7 @@ enum LogDoctor {
         if starts(["physxloader", "physxcore", "physxcooking", "physxextensions", "nxcooking"]) { return .physX }
         if n == "mscoree" { return .dotNet48 }
         if n == "hostfxr" || n == "hostpolicy" { return .dotNetModern }
+        if n == "msvbvm60" { return .vb6 }
         return nil
     }
 

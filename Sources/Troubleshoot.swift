@@ -7,7 +7,8 @@ struct TroubleshootView: View {
     let gameID: UUID
 
     enum Symptom: String, CaseIterable, Identifiable {
-        case blackScreen, blackObjects, blurryTextures, crashes, slow, sound, blankLauncher, mouseStuck, pointerShows
+        case blackScreen, blackObjects, blurryTextures, crashes, slow, sound, noMusic, garbledText, multiplayer, blankLauncher,
+             mouseStuck, pointerShows
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -17,6 +18,9 @@ struct TroubleshootView: View {
             case .crashes: return "It crashes or closes"
             case .slow: return "It's slow or stutters"
             case .sound: return "The sound crackles"
+            case .noMusic: return "Music or sound effects are missing"
+            case .garbledText: return "Text is garbled or shows question marks"
+            case .multiplayer: return "Multiplayer (LAN or online) doesn't work"
             case .blankLauncher: return "A launcher's window or login page is blank"
             case .mouseStuck: return "The mouse is stuck inside the window"
             case .pointerShows: return "The Mac's mouse pointer shows while I play"
@@ -30,6 +34,9 @@ struct TroubleshootView: View {
             case .crashes: return "xmark.octagon"
             case .slow: return "tortoise"
             case .sound: return "speaker.wave.2"
+            case .noMusic: return "music.note"
+            case .garbledText: return "character.bubble"
+            case .multiplayer: return "person.2"
             case .blankLauncher: return "macwindow"
             case .mouseStuck: return "cursorarrow.rays"
             case .pointerShows: return "cursorarrow"
@@ -130,6 +137,8 @@ struct TroubleshootView: View {
         switch symptom {
         case .blackScreen:
             if engine == .d3dmetal { hideROVStep(g, first: true); nvidiaStep(g) }
+            dxmtStep(g)
+            dgVoodooStep(g)
             switchEngineStep(g)
             note("Still black? Show the log from its settings and check for errors, or ask for help with the log.")
         case .blackObjects:
@@ -157,6 +166,8 @@ struct TroubleshootView: View {
                            detail: "Many \(g.graphics.label) games from around 2006–2010 also have a DirectX 9 renderer, which every engine runs more reliably. This hides DirectX 10 and 11 so the \(g.noun) uses it. Turn it off again if the \(g.noun) won't start, since not every game still has one.",
                            key: "usedx9", isOn: g.settings.useDX9) { $0.settings.useDX9.toggle() }
             }
+            dxmtStep(g)
+            dgVoodooStep(g)
             switchEngineStep(g)
             action("Show the log", detail: "The last lines usually say what went wrong.", key: "log", label: "Show Log") {
                 model.showLog(g.id, "game")
@@ -168,11 +179,30 @@ struct TroubleshootView: View {
                 toggleStep(g, title: "MetalFX upscaling", detail: "Renders at 75% resolution and upscales with MetalFX.", key: "metalfx",
                            isOn: g.settings.metalFX) { $0.settings.metalFX.toggle() }
             }
+            if [EngineID.dxvk, .wined3d].contains(engine) { dxmtStep(g) }
             note("Close other apps while playing, especially on a Mac with 8 GB of memory: when memory runs short, macOS moves data to disk and games stutter.")
         case .sound:
             frameLimitStep(g, why: "Crackling usually means the processor is fully busy and the sound misses its deadline. A frame limit gives it room.")
             lowPowerStep()
             note("Close other apps while playing. In our testing, crackling lined up with the processor being fully loaded and memory being moved to disk.")
+        case .noMusic:
+            if g.arch == .x86 {
+                componentStep(g, .legacyDirectX, title: "Microsoft's DirectMusic",
+                              detail: "Many games from around 1998–2005 play their music with DirectMusic, and Wine's version is incomplete, so the music is silent or the \(g.noun) crashes when it starts. This uses Microsoft's instead.",
+                              key: "dmusic", isOn: g.settings.nativeDirectMusic) { $0.settings.nativeDirectMusic.toggle() }
+            }
+            switchEngineStep(g)
+            note("Also check the \(g.noun)'s own sound settings: some games turn music off, or pick a sound device that isn't there, after their first start.")
+        case .garbledText:
+            languageStep(g)
+            note("This is for games made for one language, often Japanese, Chinese, Korean or Russian, that write text in its old character set. It doesn't change the language the \(g.noun) itself uses; that's in its own settings, if it has one.")
+        case .multiplayer:
+            if g.arch == .x86 {
+                componentStep(g, .legacyDirectX, title: "Microsoft's DirectPlay",
+                              detail: "Many older games run their LAN and online multiplayer through DirectPlay, and Wine's version is incomplete: the multiplayer menu fails, crashes or finds no games. This uses Microsoft's instead.",
+                              key: "dplay", isOn: g.settings.nativeDirectPlay) { $0.settings.nativeDirectPlay.toggle() }
+            }
+            note("If the Mac asks whether to allow incoming connections, click Allow, or other players can't reach your game. Online games that need anti-cheat software don't run under Wine at all.")
         case .mouseStuck:
             note("To get out now: press Esc, or click once. While you drag a Windows program's window, Windows keeps the mouse inside it until the button is released; if the Mac snaps the window into place mid-drag, Wine can miss the release.")
             action("Turn off window tiling", detail: "Stops the Mac snapping windows when they're dragged to a screen edge, which is what usually causes this. It affects every app; you can still tile from the green button's menu.", key: "tiling", label: "Desktop & Dock") {
@@ -258,6 +288,72 @@ struct TroubleshootView: View {
         stepCard(title: "Install WebView2",
                  detail: "Many newer launchers draw their window or login page as a web page with Microsoft's WebView2. Ferry installs it once (about 215 MB) and shares it between games; afterwards, turn on WebView2 for launchers here or in the game's settings.") {
             Button(model.installingComponent == .webView2 ? "Installing…" : "Install") { model.installComponentNow(.webView2) }
+                .disabled(model.installingComponent != nil || model.setupRunning || model.updating)
+        }
+    }
+
+    @ViewBuilder
+    private func dxmtStep(_ g: Game) -> some View {
+        if [GraphicsAPI.dx10, .dx11].contains(g.graphics) && model.runtimes.rosetta && g.sharedWith == nil {
+            let engine = model.resolvedEngine(g)
+            let keepsEngine = [EngineID.dxvk, .wined3d].contains(engine)
+            let instead = engine == .mullion ? "Mullion's own DXMT, so it can work where that crashes"
+                : engine == .mach9 ? "Mach9's own DXMT, so it can work where that crashes"
+                : engine == .wined3d ? "WineD3D, which draws DirectX 10 and 11 through OpenGL"
+                : engine == .dxvk ? "DXVK, which draws them through Vulkan" : "D3DMetal, so it can work where that crashes"
+            let detail = "The newest DXMT, from its own project, draws DirectX 10 and 11 straight to Metal, instead of \(instead). \(keepsEngine ? "This turns it on" : "This moves the \(g.noun) to the DXVK engine (Wine Staging, through Rosetta) with DXMT drawing")\(g.settings.useDX9 ? ", and turns Use DirectX 9 off" : ""). Experimental."
+            if model.componentStatus[.dxmt]?.installed == true {
+                action("Try DXMT (beta)", detail: detail, key: "dxmt", label: "Try It",
+                       alreadyOn: model.usesUpstreamDXMT(g, engine: model.resolvedEngine(g))) {
+                    change(g) { if !keepsEngine { $0.settings.engine = .dxvk }; $0.settings.dxmtUpstream = true; $0.settings.useDX9 = false }
+                }
+            } else {
+                installStep(.dxmt, title: "Try DXMT (beta)", detail: detail)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dgVoodooStep(_ g: Game) -> some View {
+        if g.arch == .x86 && (g.graphics == .unknown || g.settings.cncDdraw || g.settings.dgVoodoo) {
+            componentStep(g, .dgVoodoo, title: "Old 3D game fix (dgVoodoo2)",
+                          detail: "For 3D games from the late 1990s that use 3dfx Glide or DirectX 1–7: draws them through DirectX 11 instead. Experimental under Wine: turn it off if it makes things worse.\(g.settings.cncDdraw ? " Turns cnc-ddraw off, since both replace the same file." : "")",
+                          key: "dgvoodoo", isOn: g.settings.dgVoodoo) {
+                $0.settings.dgVoodoo.toggle()
+                if $0.settings.dgVoodoo { $0.settings.cncDdraw = false }
+            }
+        }
+    }
+
+    private func languageStep(_ g: Game) -> some View {
+        let current = GameSettings.windowsLanguages.first { $0.code == g.settings.windowsLanguage }?.name ?? "Same as this Mac"
+        return stepCard(title: "Windows language",
+                        detail: "Set Windows to the language the \(g.noun) was made for, so its text shows properly. Many games from Japan, China, Korea or Russia show garbled text, crash or won't start otherwise.") {
+            Menu(current) {
+                Button("Same as this Mac") { change(g) { $0.settings.windowsLanguage = "" }; done.insert("lang") }
+                Divider()
+                ForEach(GameSettings.windowsLanguages, id: \.code) { lang in
+                    Button(lang.name) { change(g) { $0.settings.windowsLanguage = lang.code }; done.insert("lang") }
+                }
+            }
+            .fixedSize()
+            if done.contains("lang") { Text("Start the \(g.noun) to try it").font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    @ViewBuilder
+    private func componentStep(_ g: Game, _ c: Component, title: String, detail: String, key: String, isOn: Bool,
+                               flip: @escaping (inout Game) -> Void) -> some View {
+        if model.componentStatus[c]?.installed == true {
+            toggleStep(g, title: title, detail: detail, key: key, isOn: isOn, flip: flip)
+        } else {
+            installStep(c, title: title, detail: detail)
+        }
+    }
+
+    private func installStep(_ c: Component, title: String, detail: String) -> some View {
+        stepCard(title: title, detail: "\(detail) Ferry downloads it once first (\(c.title), about \(DiskUsage.text(Int64(c.approxBytes)))); then turn it on here.") {
+            Button(model.installingComponent == c ? "Installing…" : "Install") { model.installComponentNow(c) }
                 .disabled(model.installingComponent != nil || model.setupRunning || model.updating)
         }
     }

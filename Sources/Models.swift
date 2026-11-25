@@ -164,6 +164,15 @@ struct GameSettings: Codable, Equatable {
     var drawCopies: Bool? = nil
     var dxvkBeta: Bool = false
     var cncDdraw: Bool = false
+    var dgVoodoo: Bool = false
+    var dxmtUpstream: Bool = false
+    var nativeDirectMusic: Bool = false
+    var nativeDirectPlay: Bool = false
+    var windowsLanguage: String = ""
+    static let windowsLanguages: [(code: String, name: String)] = [
+        ("ja_JP", "Japanese"), ("zh_CN", "Chinese (Simplified)"), ("zh_TW", "Chinese (Traditional)"), ("ko_KR", "Korean"),
+        ("ru_RU", "Russian"), ("pl_PL", "Polish"), ("en_US", "English (US)"),
+    ]
     var nativeXAudio2: Bool = true
     var webView2: Bool = false
     var showOnDiscord: Bool = true
@@ -219,6 +228,11 @@ extension GameSettings {
         drawCopies = (try? c.decodeIfPresent(Bool.self, forKey: .drawCopies)) ?? d.drawCopies
         dxvkBeta = (try? c.decodeIfPresent(Bool.self, forKey: .dxvkBeta)) ?? d.dxvkBeta
         cncDdraw = (try? c.decodeIfPresent(Bool.self, forKey: .cncDdraw)) ?? d.cncDdraw
+        dgVoodoo = (try? c.decodeIfPresent(Bool.self, forKey: .dgVoodoo)) ?? d.dgVoodoo
+        dxmtUpstream = (try? c.decodeIfPresent(Bool.self, forKey: .dxmtUpstream)) ?? d.dxmtUpstream
+        nativeDirectMusic = (try? c.decodeIfPresent(Bool.self, forKey: .nativeDirectMusic)) ?? d.nativeDirectMusic
+        nativeDirectPlay = (try? c.decodeIfPresent(Bool.self, forKey: .nativeDirectPlay)) ?? d.nativeDirectPlay
+        windowsLanguage = (try? c.decodeIfPresent(String.self, forKey: .windowsLanguage)) ?? d.windowsLanguage
         showOnDiscord = (try? c.decodeIfPresent(Bool.self, forKey: .showOnDiscord)) ?? d.showOnDiscord
         webView2 = (try? c.decodeIfPresent(Bool.self, forKey: .webView2)) ?? d.webView2
         nativeXAudio2 = (try? c.decodeIfPresent(Bool.self, forKey: .nativeXAudio2)) ?? d.nativeXAudio2
@@ -243,6 +257,8 @@ struct Game: Codable, Identifiable, Equatable {
     var hideROVPlaced: String? = nil
     var drawCopiesPlaced: String? = nil
     var vsyncPlaced: [String] = []
+    var placedFiles: [String: [String]] = [:]
+    var placedHashes: [String: String] = [:]
     var rovSeen: Bool = false
     var rovWatchLaunches: Int = 0
     var stallPrompted: Bool = false
@@ -270,6 +286,8 @@ extension Game {
         hideROVPlaced = try? c.decodeIfPresent(String.self, forKey: .hideROVPlaced)
         drawCopiesPlaced = try? c.decodeIfPresent(String.self, forKey: .drawCopiesPlaced)
         vsyncPlaced = (try? c.decodeIfPresent([String].self, forKey: .vsyncPlaced)) ?? []
+        placedFiles = (try? c.decodeIfPresent([String: [String]].self, forKey: .placedFiles)) ?? [:]
+        placedHashes = (try? c.decodeIfPresent([String: String].self, forKey: .placedHashes)) ?? [:]
         rovSeen = (try? c.decodeIfPresent(Bool.self, forKey: .rovSeen)) ?? false
         rovWatchLaunches = (try? c.decodeIfPresent(Int.self, forKey: .rovWatchLaunches)) ?? 0
         stallPrompted = (try? c.decodeIfPresent(Bool.self, forKey: .stallPrompted)) ?? false

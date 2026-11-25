@@ -24,6 +24,7 @@ extension AppModel {
         case .openAL: return has("windows/syswow64/OpenAL32.dll") || has("windows/system32/OpenAL32.dll")
         case .physX: return has("Program Files (x86)/NVIDIA Corporation/PhysX")
         case .lav: return has("Program Files (x86)/LAV Filters/x64/LAVVideo.ax") && (!kind.supports32bit || has("Program Files (x86)/LAV Filters/x86/LAVVideo.ax"))
+        case .vb6: return has("windows/syswow64/msvbvm60.dll") || has("windows/system32/msvbvm60.dll")
         case .shaderCompiler:
             return fm.byteSize(c_.appendingPathComponent("windows/system32/d3dcompiler_47.dll")) > 1_000_000
         default: return false
@@ -42,7 +43,10 @@ extension AppModel {
         case .webView2: return ComponentStatus(installed: webView2Folder() != nil)
         case .dxvk3: return ComponentStatus(installed: betaDXVK32() != nil)
         case .d3dmetal4: return ComponentStatus(installed: runtimes.info[.x64] != nil)
-        case .dotNet48, .dotNetModern, .xna, .openAL, .physX, .lav, .shaderCompiler:
+        case .legacyDirectX: return ComponentStatus(installed: cachedLegacyDirectX() != nil)
+        case .dgVoodoo: return ComponentStatus(installed: dgVoodooFiles() != nil)
+        case .dxmt: return ComponentStatus(installed: upstreamDXMTInstalled())
+        case .dotNet48, .dotNetModern, .xna, .vb6, .openAL, .physX, .lav, .shaderCompiler:
             let kinds = environments(for: c)
             let missing = kinds.filter { !libraryInstalled(c, in: $0) }
             return ComponentStatus(installed: !kinds.isEmpty && missing.isEmpty, missingFrom: missing.count < kinds.count ? missing : [])
@@ -50,7 +54,7 @@ extension AppModel {
         }
     }
 
-    static let checkableLibraries: [Component] = [.dotNet48, .dotNetModern, .xna, .openAL, .physX, .lav, .shaderCompiler]
+    static let checkableLibraries: [Component] = [.dotNet48, .dotNetModern, .xna, .vb6, .openAL, .physX, .lav, .shaderCompiler]
 
     func missingLibraries(in kind: RuntimeKind) -> [Component] {
         guard fm.exists(templateURL(kind).appendingPathComponent("system.reg")) else { return [] }
@@ -63,16 +67,22 @@ extension AppModel {
         }
     }
 
-    func needsFilling(_ kind: RuntimeKind) -> Bool {
-        !fm.exists(templateURL(kind).appendingPathComponent(".ferry-filled")) && !missingLibraries(in: kind).isEmpty
+    private func untriedLibraries(in kind: RuntimeKind) -> [Component] {
+        let marker = templateURL(kind).appendingPathComponent(".ferry-filled")
+        guard let text = try? String(contentsOf: marker, encoding: .utf8) else { return missingLibraries(in: kind) }
+        let tried = text.isEmpty ? Self.checkableLibraries.filter { $0 != .vb6 }.map(\.rawValue)
+                                 : text.split(separator: " ").map(String.init)
+        return missingLibraries(in: kind).filter { !tried.contains($0.rawValue) }
     }
+
+    func needsFilling(_ kind: RuntimeKind) -> Bool { !untriedLibraries(in: kind).isEmpty }
 
     func fillMissingLibraries(_ kind: RuntimeKind) async {
         guard needsFilling(kind), let wine = runtimes.wine(for: kind, arch: .x64) else { return }
         let prefix = templateURL(kind)
         let log = Paths.logs.appendingPathComponent("fill-\(kind.rawValue).log")
         _ = Shell.openLog(log, truncate: true).map { try? $0.close() }
-        for c in missingLibraries(in: kind) {
+        for c in untriedLibraries(in: kind) {
             installingComponent = c
             _ = await installWindowsLibraries(wine: wine, env: baseEnvironment(prefix: prefix), prefix: prefix,
                                               kind: kind, log: log, only: c)
@@ -82,7 +92,8 @@ extension AppModel {
         if let server = runtimes.wineserver(for: kind) {
             await Shell.run(server.path, ["-w"], env: baseEnvironment(prefix: prefix), log: log)
         }
-        try? Data().write(to: prefix.appendingPathComponent(".ferry-filled"))
+        try? Self.checkableLibraries.map(\.rawValue).joined(separator: " ")
+            .write(to: prefix.appendingPathComponent(".ferry-filled"), atomically: true, encoding: .utf8)
         report(nil, for: kind)
     }
 
@@ -125,6 +136,9 @@ extension AppModel {
         case .webView2: try await installWebView2()
         case .dxvk3: try await installBetaDXVK()
         case .d3dmetal4: try await runtimes.ensure(.x64)
+        case .legacyDirectX: try await installLegacyDirectX()
+        case .dgVoodoo: try await installDgVoodoo()
+        case .dxmt: try await installUpstreamDXMT()
         default:
             let log = Paths.logs.appendingPathComponent("install-\(c.rawValue).log")
             _ = Shell.openLog(log, truncate: true).map { try? $0.close() }
