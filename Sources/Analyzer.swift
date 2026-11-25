@@ -206,7 +206,7 @@ enum Analyzer {
         var libraries: [String] = []
         var settings = GameSettings.defaults()
 
-        let arch = info?.arch ?? (ext == "exe" ? .unknown : .x86)
+        var arch = info?.arch ?? (ext == "exe" ? .unknown : .x86)
         let detected = ext == "exe" ? PEInspector.graphicsAPI(for: exe) : .unknown
         var graphics = detected == .unknown ? (knownGraphics ?? .unknown) : detected
         let imports = info?.imports ?? []
@@ -278,6 +278,20 @@ enum Analyzer {
             framework = "MonoGame"
         } else if info?.isDotNet == true {
             framework = ".NET"
+        }
+        if framework == ".NET" && knownGraphics == nil {
+            graphics = exeContains("Microsoft.DirectX.Direct3D") ? .dx9 : .unknown
+        }
+        if ext == "exe",
+           ProgramChoice.role(fileName: exe.lastPathComponent, description: PEVersionInfo.string("FileDescription", in: exe)) == .launcher,
+           let game = rankedPrograms(in: dir).first(where: { [.singleplayer, .other].contains($0.role) && $0.url != exe })?.url,
+           let gameInfo = PEParser.parse(game) {
+            let gameGraphics = PEInspector.graphicsAPI(for: game)
+            if gameGraphics != .unknown {
+                arch = gameInfo.arch
+                graphics = gameGraphics
+                reasons.append("\(exe.lastPathComponent) is a launcher for \(game.lastPathComponent), which runs in the same Windows session: the engine is picked for \(game.lastPathComponent) (\(gameGraphics.label), \(gameInfo.arch == .x86 ? "32-bit" : "64-bit")).")
+            }
         }
         if exeContains("launch4j") {
             findings.append(Finding(level: .warning, text: "This .exe is a wrapper around a Java program. It needs Java for Windows installed inside its environment, or run the .jar with Java for Mac instead."))

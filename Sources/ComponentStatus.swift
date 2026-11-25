@@ -139,17 +139,25 @@ extension AppModel {
         case .legacyDirectX: try await installLegacyDirectX()
         case .dgVoodoo: try await installDgVoodoo()
         case .dxmt: try await installUpstreamDXMT()
+        case .dotNet48:
+            try await installLibrary(c)
+            try await installDotNetLoader()
+            try await installManagedDirectX()
         default:
-            let log = Paths.logs.appendingPathComponent("install-\(c.rawValue).log")
-            _ = Shell.openLog(log, truncate: true).map { try? $0.close() }
-            for kind in environments(for: c) where !libraryInstalled(c, in: kind) {
-                guard let wine = runtimes.wine(for: kind, arch: .x64) else { continue }
-                let prefix = templateURL(kind)
-                let skipped = await installWindowsLibraries(wine: wine, env: baseEnvironment(prefix: prefix), prefix: prefix,
-                                                            kind: kind, log: log, only: c)
-                if !skipped.isEmpty {
-                    throw FerryError("\(skipped.joined(separator: ", ")) couldn't be downloaded. Check your connection and try again.")
-                }
+            try await installLibrary(c)
+        }
+    }
+
+    private func installLibrary(_ c: Component) async throws {
+        let log = Paths.logs.appendingPathComponent("install-\(c.rawValue).log")
+        _ = Shell.openLog(log, truncate: true).map { try? $0.close() }
+        for kind in environments(for: c) where !libraryInstalled(c, in: kind) {
+            guard let wine = runtimes.wine(for: kind, arch: .x64) else { continue }
+            let prefix = templateURL(kind)
+            let skipped = await installWindowsLibraries(wine: wine, env: baseEnvironment(prefix: prefix), prefix: prefix,
+                                                        kind: kind, log: log, only: c)
+            if !skipped.isEmpty {
+                throw FerryError("\(skipped.joined(separator: ", ")) couldn't be downloaded. Check your connection and try again.")
             }
         }
     }

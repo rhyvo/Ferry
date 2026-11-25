@@ -128,6 +128,7 @@ final class AppModel: ObservableObject {
         g.rovSeen = live.rovSeen
         g.rovWatchLaunches = live.rovWatchLaunches
         g.stallPrompted = live.stallPrompted
+        g.learnedTessellation = live.learnedTessellation
         update(g)
     }
 
@@ -534,7 +535,8 @@ final class AppModel: ObservableObject {
             }
         }
         if engine == .mach9 {
-            mach9Environment(&env, settings: s, frameCap: cap, overrides: overrides, graphics: g.drawsWith, arch: g.arch)
+            mach9Environment(&env, settings: s, frameCap: cap, overrides: overrides, graphics: g.drawsWith, arch: g.arch,
+                             tessellation: tessellationCap(g))
         } else if !overrides.isEmpty {
             env["WINEDLLOVERRIDES"] = overrides
         }
@@ -542,7 +544,7 @@ final class AppModel: ObservableObject {
     }
 
     private func mach9Environment(_ env: inout [String: String], settings s: GameSettings, frameCap cap: Int?, overrides: String,
-                                  graphics: GraphicsAPI, arch: PEArch) {
+                                  graphics: GraphicsAPI, arch: PEArch, tessellation: Int?) {
         env["WINEDLLOVERRIDES"] = nil
         env["WINE_PROF_SERVICE"] = nil
         env["WINEMSYNC"] = s.fastSync ? "1" : "0"
@@ -585,6 +587,9 @@ final class AppModel: ObservableObject {
         if s.mach9Direct3D != "wined3d", let cap {
             env["MTLD3D_CONFIG"] = ["present.maxFps=\(cap)", env["MTLD3D_CONFIG"]].compactMap { $0 }.joined(separator: ";")
             env["DXMT_CONFIG"] = ["d3d11.preferredMaxFrameRate=\(cap)", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
+        }
+        if s.mach9Direct3D != "wined3d", let tessellation {
+            env["DXMT_CONFIG"] = ["d3d11.maxTessFactor=\(tessellation)", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
         }
         if s.mach9Direct3D != "wined3d" && s.vsync {
             env["DXMT_CONFIG"] = ["dxgi.vsync=on", env["DXMT_CONFIG"]].compactMap { $0 }.joined(separator: ";")
@@ -739,6 +744,7 @@ final class AppModel: ObservableObject {
                 }
                 await applyDDrawFixes(p)
                 await applyLegacyDirectX(p)
+                await prepareDotNet(p)
                 applyVSyncHelpers(p)
                 applyUpstreamDXMT(p)
                 await applyDXVKD3D9(p)
@@ -772,6 +778,28 @@ final class AppModel: ObservableObject {
             + ((try? fm.contentsOfDirectory(atPath: dir.deletingLastPathComponent().path)) ?? [])
         let antiCheat = ["easyanticheat", "battleye", "beservice", "vgk", "xigncode", "gameguard", "eaanticheat", "ace-base"]
         return names.contains { name in antiCheat.contains { name.lowercased().contains($0) } }
+    }
+
+    static let autoTessellationStart = 28
+    static let tessellationLevels = [1, 8, 16, 24, 32, 48, 64]
+
+    func tessellationCap(_ g: Game) -> Int? {
+        guard g.drawsWith == .dx11 else { return nil }
+        let level = g.settings.maxTessellation > 0 ? g.settings.maxTessellation : (g.learnedTessellation ?? Self.autoTessellationStart)
+        return level >= 64 ? nil : level
+    }
+
+    private func checkTessellation(_ id: UUID, engine: EngineID) {
+        guard engine == .mach9, let g = game(id), g.settings.maxTessellation == 0, g.drawsWith == .dx11 else { return }
+        let log = logURL(id, "game")
+        Task {
+            let refused = await Task.detached {
+                (try? Data(contentsOf: log, options: .alwaysMapped))?.range(of: Data("Failed to create tessellation raster PSO".utf8)) != nil
+            }.value
+            guard refused, var g = game(id), g.settings.maxTessellation == 0 else { return }
+            g.learnedTessellation = max(1, (g.learnedTessellation ?? Self.autoTessellationStart) - 4)
+            update(g)
+        }
     }
 
     private func checkForStall(_ id: UUID) {
@@ -1189,6 +1217,7 @@ final class AppModel: ObservableObject {
         }
         checkROVReport(id)
         checkForStall(id)
+        checkTessellation(id, engine: engine)
         discordGameEnded(id)
         let stoppedByUser = stopping.remove(id) != nil
         let crashed = !stoppedByUser && status != 0 && seconds < 20

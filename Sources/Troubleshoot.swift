@@ -7,13 +7,14 @@ struct TroubleshootView: View {
     let gameID: UUID
 
     enum Symptom: String, CaseIterable, Identifiable {
-        case blackScreen, blackObjects, blurryTextures, crashes, slow, sound, noMusic, garbledText, multiplayer, blankLauncher,
+        case blackScreen, blackObjects, vanishingObjects, blurryTextures, crashes, slow, sound, noMusic, garbledText, multiplayer, blankLauncher,
              mouseStuck, pointerShows
         var id: String { rawValue }
         var title: String {
             switch self {
             case .blackScreen: return "The screen is black, but there's sound"
             case .blackObjects: return "Objects or effects are black, or take ages to appear"
+            case .vanishingObjects: return "Objects, walls or floors flicker or vanish from some angles"
             case .blurryTextures: return "Textures are blurry, grey or low-detail"
             case .crashes: return "It crashes or closes"
             case .slow: return "It's slow or stutters"
@@ -30,6 +31,7 @@ struct TroubleshootView: View {
             switch self {
             case .blackScreen: return "rectangle.fill"
             case .blackObjects: return "cube.transparent"
+            case .vanishingObjects: return "eye.slash"
             case .blurryTextures: return "photo"
             case .crashes: return "xmark.octagon"
             case .slow: return "tortoise"
@@ -148,6 +150,16 @@ struct TroubleshootView: View {
                 engineStep(g, to: .d3dmetal, why: "D3DMetal turns DirectX 11 and 12 shaders straight into Metal with Apple's own converter, much faster than Mach9's route through Vulkan.")
             }
             frameLimitStep(g, why: "Leaves the processor and graphics room to build shaders while you play.")
+        case .vanishingObjects:
+            note("When things blink, disappear, or only show from certain angles or spots, the Mac's graphics chip is usually refusing to draw them: often because the \(g.noun) asks for more shape detail (DirectX 11 tessellation) than Apple's graphics chips can draw at once.")
+            tessellationStep(g)
+            if g.graphics.hasDX9Fallback {
+                toggleStep(g, title: "Use DirectX 9",
+                           detail: "The \(g.noun)'s older DirectX 9 renderer has no tessellation, so nothing gets refused, at the cost of the DirectX 10 and 11 extras.",
+                           key: "usedx9", isOn: g.settings.useDX9) { $0.settings.useDX9.toggle() }
+            }
+            switchEngineStep(g)
+            note("Also try turning tessellation, or the \(g.noun)'s geometry or detail level, down or off in its own graphics settings.")
         case .blurryTextures:
             note("Many games start with low-detail textures and swap in sharp ones while you play. When they stay blurry, the part of the game that loads them is stuck, or the game thinks there's too little video memory.")
             toggleStep(g, title: "Fast Sync",
@@ -321,6 +333,26 @@ struct TroubleshootView: View {
                           key: "dgvoodoo", isOn: g.settings.dgVoodoo) {
                 $0.settings.dgVoodoo.toggle()
                 if $0.settings.dgVoodoo { $0.settings.cncDdraw = false }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tessellationStep(_ g: Game) -> some View {
+        if model.resolvedEngine(g) == .mach9 && g.drawsWith == .dx11 && g.settings.mach9Direct3D != "wined3d" {
+            let learned = g.learnedTessellation ?? AppModel.autoTessellationStart
+            let level = g.settings.maxTessellation
+            stepCard(title: "Tessellation detail",
+                     detail: "Caps the extra shape detail, so every object fits what the Mac can draw. Automatic starts at \(AppModel.autoTessellationStart) and uses less after a run where objects were still skipped; pick a lower number if they still blink. Lower numbers look a little less smooth up close.") {
+                Menu(level == 0 ? "Automatic (\(learned))" : "\(level)") {
+                    Button("Automatic (\(learned))") { change(g) { $0.settings.maxTessellation = 0 }; done.insert("tess") }
+                    Divider()
+                    ForEach(AppModel.tessellationLevels.filter { $0 < 64 }, id: \.self) { l in
+                        Button(l == 1 ? "1 (lowest)" : "\(l)") { change(g) { $0.settings.maxTessellation = l }; done.insert("tess") }
+                    }
+                }
+                .fixedSize()
+                if done.contains("tess") { Text("Start the \(g.noun) to try it").font(.caption).foregroundStyle(.secondary) }
             }
         }
     }

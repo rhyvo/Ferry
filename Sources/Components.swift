@@ -43,7 +43,7 @@ enum Component: String, CaseIterable, Identifiable {
         case .mach9: return "Mach9 Wine"
         case .dxvk: return "DXVK"
         case .gstreamer: return "GStreamer"
-        case .dotNet48: return ".NET Framework 4.8"
+        case .dotNet48: return ".NET Framework (2.0–4.8)"
         case .dotNetModern: return ".NET 6 and 8"
         case .xna: return "XNA Framework 4.0"
         case .vb6: return "Visual Basic 6 runtime"
@@ -73,7 +73,7 @@ enum Component: String, CaseIterable, Identifiable {
         case .mach9: return "A native Apple-silicon Wine that turns DirectX 9 straight into Metal (mtld3d), plus DirectX 10–12 (DXMT). The best engine for DirectX 9 games and 32-bit DirectX 10/11 games. macOS 26.4 and later."
         case .dxvk: return "DirectX 10/11 → Vulkan → Metal, the second engine for DirectX 11 games."
         case .gstreamer: return "Plays video cutscenes in Wine Staging games and programs. macOS asks for your password."
-        case .dotNet48: return "Microsoft's .NET Framework for older .NET games, tools and launchers. The slowest to install."
+        case .dotNet48: return "Microsoft's .NET Framework 4.8 for older .NET games, tools and launchers, which also runs ones made for .NET 2.0–3.5. Includes Microsoft's .NET loader (from its .NET 4.0 package, which Wine hasn't got) and Managed DirectX, which older launchers use for their graphics settings. The slowest to install."
         case .dotNetModern: return "Desktop runtimes for newer .NET apps: mod managers, editors, launchers."
         case .xna: return "For indie games built with XNA (early Terraria, Fez, Bastion)."
         case .vb6: return "Microsoft's runtime for programs written in Visual Basic 6: older games, launchers, editors and tools. Wine has no version of its own."
@@ -114,7 +114,7 @@ enum Component: String, CaseIterable, Identifiable {
         switch self {
         case .visualCpp: return 95_000_000
         case .directX: return 100_000_000
-        case .dotNet48: return 120_000_000
+        case .dotNet48: return 170_000_000
         case .dotNetModern: return 222_000_000
         case .xna: return 7_000_000
         case .physX: return 30_000_000

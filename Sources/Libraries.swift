@@ -26,6 +26,8 @@ struct WinLibrary {
 }
 
 extension AppModel {
+    static let dotNet40File = "dotNetFx40_Full_x86_x64.exe"
+
     static let librarySetVersion = 2
 
     private static let vcArgs = ["/install", "/quiet", "/norestart"]
@@ -75,6 +77,10 @@ extension AppModel {
         WinLibrary(name: ".NET Framework 4.8",
                    url: "https://download.visualstudio.microsoft.com/download/pr/2d6bb6b2-226a-4baa-bdec-798822606ff1/8494001c276a4b96804cde7829c04d7f/ndp48-x86-x64-allos-enu.exe",
                    file: "ndp48-x86-x64-allos-enu.exe", method: .dotNet, needs32bitWine: true, slow: true, component: .dotNet48),
+        WinLibrary(name: ".NET 4.0 (for Microsoft's .NET loader)",
+                   url: "https://download.microsoft.com/download/9/5/A/95A9616B-7A37-4AF6-BC36-D6EA96C8DAAE/dotNetFx40_Full_x86_x64.exe",
+                   file: AppModel.dotNet40File, method: .cacheOnly, needs32bitWine: true, component: .dotNet48,
+                   sha256: "65e064258f2e418816b304f646ff9e87af101e4c9552ab064bb74d281c38659f"),
         WinLibrary(name: ".NET 6 Desktop Runtime (64-bit)", url: "https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x64.exe",
                    file: "windowsdesktop-runtime-6.x64.exe", method: .exe(vcArgs), needs32bitWine: true, component: .dotNetModern),
         WinLibrary(name: ".NET 6 Desktop Runtime (32-bit)", url: "https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x86.exe",
@@ -173,6 +179,7 @@ extension AppModel {
         for lib in Self.windowsLibraries where Self.isEnabled(lib) {
             if lib.component == .legacyDirectX && cachedLegacyDirectX() != nil { continue }
             if lib.component == .dgVoodoo && dgVoodooFiles() != nil { continue }
+            if lib.file == Self.dotNet40File && cachedDotNetLoader() != nil { continue }
             if !runtimes.isCached(lib.file) { status = "Downloading \(lib.name)…" }
             if await cachedFile(for: lib) == nil { skipped.append(lib.name) }
         }

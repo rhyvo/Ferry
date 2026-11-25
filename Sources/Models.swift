@@ -152,6 +152,7 @@ struct GameSettings: Codable, Equatable {
     var mullionVulkan: String = ""
     var mullionRosetta: Bool = false
     var mach9Direct3D: String = ""
+    var maxTessellation: Int = 0
     var useDX9: Bool = false
     var fullMemory32: Bool = true
     var macFullScreenButton: Bool = true
@@ -216,6 +217,7 @@ extension GameSettings {
         mullionVulkan = (try? c.decodeIfPresent(String.self, forKey: .mullionVulkan)) ?? d.mullionVulkan
         mullionRosetta = (try? c.decodeIfPresent(Bool.self, forKey: .mullionRosetta)) ?? d.mullionRosetta
         mach9Direct3D = (try? c.decodeIfPresent(String.self, forKey: .mach9Direct3D)) ?? d.mach9Direct3D
+        maxTessellation = (try? c.decodeIfPresent(Int.self, forKey: .maxTessellation)) ?? d.maxTessellation
         useDX9 = (try? c.decodeIfPresent(Bool.self, forKey: .useDX9)) ?? d.useDX9
         fullMemory32 = (try? c.decodeIfPresent(Bool.self, forKey: .fullMemory32)) ?? d.fullMemory32
         macFullScreenButton = (try? c.decodeIfPresent(Bool.self, forKey: .macFullScreenButton)) ?? d.macFullScreenButton
@@ -262,6 +264,7 @@ struct Game: Codable, Identifiable, Equatable {
     var rovSeen: Bool = false
     var rovWatchLaunches: Int = 0
     var stallPrompted: Bool = false
+    var learnedTessellation: Int? = nil
     var iconMode: IconMode = .auto
     var framework: String? = nil
     var mods: [InstalledMod] = []
@@ -291,6 +294,7 @@ extension Game {
         rovSeen = (try? c.decodeIfPresent(Bool.self, forKey: .rovSeen)) ?? false
         rovWatchLaunches = (try? c.decodeIfPresent(Int.self, forKey: .rovWatchLaunches)) ?? 0
         stallPrompted = (try? c.decodeIfPresent(Bool.self, forKey: .stallPrompted)) ?? false
+        learnedTessellation = try? c.decodeIfPresent(Int.self, forKey: .learnedTessellation)
         iconMode = (try? c.decodeIfPresent(IconMode.self, forKey: .iconMode)) ?? .auto
         framework = try? c.decodeIfPresent(String.self, forKey: .framework)
         mods = (try? c.decodeIfPresent(LossyList<InstalledMod>.self, forKey: .mods))?.items ?? []

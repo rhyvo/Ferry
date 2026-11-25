@@ -33,7 +33,7 @@ enum SetupStep: Int, CaseIterable, Identifiable {
         case .dxvk: return "DirectX 10/11 → Vulkan → Metal"
         case .arm64: return "Native Apple-silicon Wine with Mullion (DXMT); doesn't need Rosetta"
         case .mach9: return "DirectX 9 → Metal (mtld3d) and DirectX 10–12 → Metal (DXMT, vkd3d-proton); doesn't need Rosetta"
-        case .libraries: return "Visual C++ 2005–2022, DirectX 2010 and its shader compiler, .NET Framework 4.8, .NET 6 and 8, XNA 4.0, OpenAL, PhysX, LAV video codecs"
+        case .libraries: return "Visual C++ 2005–2022, DirectX 2010 and its shader compiler, .NET Framework 2.0–4.8, .NET 6 and 8, XNA 4.0, OpenAL, PhysX, LAV video codecs"
         case .gptkTemplate: return "64-bit Visual C++ (copied from Wine Staging's), the shader compiler and fonts"
         case .stagingTemplate: return "Every library and font, plus DXVK, so new games and apps start instantly (.NET takes several minutes)"
         case .arm64Template: return "Every library and font, including the 32-bit ones (macOS 26.4 and later)"
@@ -179,6 +179,9 @@ extension AppModel {
                 current = .libraries
                 setupSteps[.libraries] = .running
                 skipped += await downloadWindowsLibraries()
+                if Component.isOn(.dotNet48) {
+                    do { try await installDotNetLoader(); try await installManagedDirectX() } catch { skipped.append(".NET loader and Managed DirectX") }
+                }
                 setupSteps[.libraries] = .done
 
                 var mullionJob: Task<[String], Never>? = nil

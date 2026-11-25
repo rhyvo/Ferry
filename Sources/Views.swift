@@ -1303,6 +1303,22 @@ struct GameSettingsView: View {
                                         Text("WineD3D").tag("wined3d")
                                     }
                                     .info("How Mach9 draws DirectX. Metal uses mtld3d for DirectX 9 and DXMT for DirectX 10 and 11, straight to Metal. WineD3D uses Wine's own DirectX through OpenGL: slower, but worth trying if the \(g.noun) draws incorrectly.")
+                                    if g.graphics == .dx11 {
+                                        let tessNeeds: String? = g.settings.useDX9 ? "Turn off Use DirectX 9 first."
+                                            : g.settings.mach9Direct3D == "wined3d" ? "Needs Mach9 renderer set to Metal." : nil
+                                        let learned = g.learnedTessellation ?? AppModel.autoTessellationStart
+                                        Picker(selection: game.settings.maxTessellation) {
+                                            Text("Automatic (\(learned))").tag(0)
+                                            Divider()
+                                            ForEach(AppModel.tessellationLevels, id: \.self) { level in
+                                                Text(level == 1 ? "1 (lowest)" : level == 64 ? "64 (the \(g.noun)'s full detail)" : "\(level)").tag(level)
+                                            }
+                                        } label: {
+                                            settingLabel("Tessellation detail", needs: tessNeeds)
+                                        }
+                                        .disabled(tessNeeds != nil)
+                                        .info("The most extra shape detail (DirectX 11 tessellation) the \(g.noun) gets. Apple's graphics chips can only draw so much detail at once: above that, objects blink, vanish or show only from some angles. Automatic starts at \(AppModel.autoTessellationStart) and, if objects were still skipped, uses less the next time. Higher numbers look smoother up close; 64 is the \(g.noun)'s own maximum and can make objects vanish.")
+                                    }
                                     if g.arch == .x86 {
                                         Toggle("Large address aware (4 GB)", isOn: game.settings.fullMemory32)
                                             .info("Gives this 32-bit \(g.noun) 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the \(g.noun) won't start.")
