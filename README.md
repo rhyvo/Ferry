@@ -2,6 +2,8 @@
   <img src="media/banner.png" alt="Ferry: Windows games on your Mac, made simple" width="100%">
 </p>
 
+<h1 align="center">Ferry: play Windows games on your Mac (Apple silicon)</h1>
+
 <p align="center">
   <a href="https://github.com/rhyvo/Ferry/releases/latest"><b>⬇️ Download Ferry</b></a>
   &nbsp;·&nbsp;
@@ -25,7 +27,7 @@
   <img src="media/ferry-demo.gif" alt="Ferry's library, Compatibility Check, game settings, Troubleshoot, mods, controller mapping, Task Manager, engines, components, Storage and General settings" width="100%">
 </p>
 
-**Ferry runs Windows games and programs on Apple silicon Macs.** Drop in a game and press Play. Ferry reads the game, picks the best way to run it, installs what it needs, and gets out of the way. It's free, and it's a small native Mac app.
+**Ferry runs Windows games and programs on Apple silicon Macs (M1 and later).** Drop in a game, or install Steam, and press Play. Ferry reads the game, picks the best way to run it, installs what it needs, and gets out of the way. It's free, needs no Windows licence, and it's a small native Mac app: a free alternative to CrossOver and Whisky.
 
 ## Watch it run
 
@@ -101,6 +103,12 @@ If a game closes right after starting, Ferry shows why and offers the next engin
 Ferry's Compatibility Check tells you about these before you add a game.
 
 ## FAQ
+
+**How do I play Windows games on a Mac?** [Download Ferry](https://github.com/rhyvo/Ferry/releases/latest), drag the game's `.exe`, folder or archive onto its window (or install Steam from Ferry), and press **Play**. Ferry picks the engine and installs what the game needs.
+
+**Is Ferry a free alternative to CrossOver or Whisky?** Yes. Like them it runs Windows games through Wine and Apple's D3DMetal, but it's free, picks the engine and settings per game for you, and keeps its engines up to date with one click.
+
+**Does it work with Steam games?** Yes. Ferry installs Steam for Windows in one click and lets you add its games to your library. Games with kernel anti-cheat can't run on any Mac translation layer (see [What can't run](#what-cant-run)).
 
 **Is it really free?** Yes. Ferry costs nothing, and so do all the engines and libraries it downloads.
 
