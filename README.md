@@ -60,6 +60,12 @@ More on the [Rhyvo YouTube channel](https://www.youtube.com/@rhyvo_ferry).
 - 🕹️ **Controllers** for Xbox and PlayStation work automatically, and **Discord** shows what you're playing.
 - 🎨 **Native and polished:** made for macOS, with Mac shortcuts for your games and a theme color you can pick.
 
+## AI assistant
+
+- **Ask in plain words.** Type in the assistant bar at the bottom of Ferry's window, or right-click a game and choose **Ask the Assistant…**, to find out why it won't start or how to run it better. It can read the game's log and settings, and every change it makes shows as a card with **Undo**.
+- **Your choice of model.** Apple's model runs on your Mac for free (macOS 26.4 or later with Apple Intelligence on). It chats, remembers the conversation, and offers Ferry's own fixes from Troubleshoot as cards you apply, so nothing changes until you press a button. Or add your own Claude, ChatGPT or Gemini key, or point it at a model on your Mac, and it digs deeper: it reads logs and settings itself and can change settings and test games for you (with Undo), asking first. Set it up in **Settings ▸ AI**.
+- **Use Ferry from other AI apps.** Turn on **Use Ferry from other AI apps** in the same place to let Claude Code or Claude Desktop use Ferry too.
+
 ## Install
 
 1. [Download **Ferry**](https://github.com/rhyvo/Ferry/releases/latest) (the `.dmg` file) and open it.

@@ -66,6 +66,7 @@ final class AppModel: ObservableObject {
     @Published var showUpdatePrompt = false
     @Published var ferryUpdate: String? = nil
     @Published var ferryUpdateHidden = false
+    @Published var knowledge = KnowledgePack(docs: [])
     @Published var updating = false
     @Published var noticeMessage: String? = nil
     var promptedForUpdates: Set<String> = []
@@ -73,6 +74,17 @@ final class AppModel: ObservableObject {
     @Published var launchFailure: LaunchFailure? = nil
     var stopping: Set<UUID> = []
     var discordCurrent: UUID? = nil
+    @Published var assistantChats: [UUID: AssistantChat] = [:]
+    let assistantPrompter = AssistantPrompter()
+    @Published var assistantChangeRevision = 0
+    @Published var assistantHandoff: AssistantHandoff? = nil
+    @Published var assistantSession: AssistantChatSession? = nil
+    @Published var assistantDockOpen = false {
+        didSet { if assistantDockOpen { assistantSession?.unread = false } }
+    }
+    private(set) var assistantServer: AssistantServer?
+    var lastEnded: [UUID: AssistantRuns.GameEnd] = [:]
+    var startFailures: [UUID: String] = [:]
 
     private var processes: [UUID: Process] = [:]
     private var handoffPIDs: [UUID: [Int32]] = [:]
@@ -95,8 +107,13 @@ final class AppModel: ObservableObject {
                 noticeMessage = "D3DMetal \(removed) needs a newer Wine than Ferry's D3DMetal engine has, so games couldn't start with it. Ferry put the bundled D3DMetal back. D3DMetal \(removed) can be imported again once a Game Porting Toolkit 4 build of Wine is released."
             }
         }
+        reloadKnowledge()
         startUpdateChecks()
         startDiscordStatus()
+        updateAssistantServer()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateAssistantServer() }
+        }
         Task { [weak self] in
             while let self {
                 self.backdrop.update(gamesRunning: !self.running.isEmpty)
@@ -110,11 +127,44 @@ final class AppModel: ObservableObject {
         Task { await endLeftoverWine() }
     }
 
+    init(libraryOnly: ()) {
+        load()
+        refreshSetupState()
+        reloadKnowledge()
+    }
+
+    func updateAssistantServer() {
+        let on = UserDefaults.standard.bool(forKey: AISettingsView.mcpEnabledKey)
+        if on, assistantServer == nil {
+            let tools: [[String: Any]] = Self.assistantTools.map { ["name": $0.name, "description": $0.description, "inputSchema": $0.schema] }
+            let server = AssistantServer(path: Paths.root.appendingPathComponent("assistant.sock").path, handler: AssistantServer.Handler(
+                instructions: Self.assistantInstructions,
+                tools: tools,
+                open: { [weak self] chat, client in self?.assistantChats[chat] = AssistantChat(id: chat, client: client) },
+                call: { [weak self] chat, tool, args in
+                    guard let self else { return ([], true) }
+                    let r = await self.runAssistantTool(tool, AssistantCall(chat: chat, args: args))
+                    return (r.content.map {
+                        switch $0 {
+                        case .text(let s): return ["type": "text", "text": s]
+                        case .image(let png): return ["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]
+                        }
+                    }, r.isError)
+                },
+                end: { [weak self] chat in self?.endAssistantChat(chat) }))
+            server.start()
+            assistantServer = server
+        } else if !on, let server = assistantServer {
+            assistantServer = nil
+            server.stop()
+        }
+    }
+
     func game(_ id: UUID) -> Game? { games.first { $0.id == id } }
 
-    func saveSettings(_ draft: Game) {
+    func saveSettings(_ draft: Game, openedAs original: Game? = nil) {
         guard let live = game(draft.id) else { return update(draft) }
-        var g = draft
+        var g = original.map { AssistantEdits.merged(live: live, original: $0, edited: draft) } ?? draft
         g.runtimesInstalled = live.runtimesInstalled
         g.applied = live.applied
         g.lastPlayed = live.lastPlayed
@@ -729,37 +779,125 @@ final class AppModel: ObservableObject {
             lowPowerPrompt = id
             return
         }
-        guard !updating else {
-            errorMessage = "Ferry is installing updates. It can start once they finish."
+        do { try claimStart(id) } catch {
+            errorMessage = error.localizedDescription
             return
         }
-        preparing.insert(id)
         Task {
-            defer { preparing.remove(id); status = nil }
-            do {
-                let p = try await prepare(id)
-                let autoRuntimes = UserDefaults.standard.object(forKey: "autoRuntimes") as? Bool ?? true
-                if autoRuntimes && p.game.sharedWith == nil && !p.game.runtimesInstalled.contains(p.kind.rawValue) {
-                    _ = await installLibraries(p)
-                }
-                await applyDDrawFixes(p)
-                await applyLegacyDirectX(p)
-                await prepareDotNet(p)
-                applyVSyncHelpers(p)
-                applyUpstreamDXMT(p)
-                await applyDXVKD3D9(p)
-                syncD3DMetal(p)
-                applyDrawCopies(p)
-                applyHideROV(p)
-                let ready = withWebView2(p)
-                await watchInstaller(p)
-                status = "Starting \(p.game.name)…"
-                try launch(ready)
-            } catch {
-                installWatches[id] = nil
-                errorMessage = error.localizedDescription
-            }
+            do { try await startClaimed(id) } catch { errorMessage = error.localizedDescription }
         }
+    }
+
+    func startGame(_ id: UUID) async throws {
+        try claimStart(id)
+        try await startClaimed(id)
+    }
+
+    func startGameInBackground(_ id: UUID) throws {
+        try claimStart(id)
+        Task { try? await startClaimed(id) }
+    }
+
+    private func claimStart(_ id: UUID) throws {
+        guard !running.contains(id), !preparing.contains(id) else {
+            throw FerryError("\(game(id)?.name ?? "That program") is already running or starting.")
+        }
+        if ProcessInfo.processInfo.isLowPowerModeEnabled && !lowPowerAcknowledged {
+            throw FerryError("Low Power Mode is on. macOS slows the processor and graphics in Low Power Mode, so games run noticeably slower and their sound can crackle. Turn it off in System Settings ▸ Battery, or Control Center, for the best performance.")
+        }
+        guard !updating else { throw FerryError("Ferry is installing updates. It can start once they finish.") }
+        preparing.insert(id)
+        startFailures[id] = nil
+    }
+
+    private func startClaimed(_ id: UUID) async throws {
+        defer { preparing.remove(id); status = nil }
+        do {
+            let p = try await prepare(id)
+            let autoRuntimes = UserDefaults.standard.object(forKey: "autoRuntimes") as? Bool ?? true
+            if autoRuntimes && p.game.sharedWith == nil && !p.game.runtimesInstalled.contains(p.kind.rawValue) {
+                _ = await installLibraries(p)
+            }
+            await applyDDrawFixes(p)
+            await applyLegacyDirectX(p)
+            await prepareDotNet(p)
+            applyVSyncHelpers(p)
+            applyUpstreamDXMT(p)
+            await applyDXVKD3D9(p)
+            syncD3DMetal(p)
+            applyDrawCopies(p)
+            applyHideROV(p)
+            let ready = withWebView2(p)
+            await watchInstaller(p)
+            status = "Starting \(p.game.name)…"
+            try launch(ready)
+        } catch {
+            installWatches[id] = nil
+            startFailures[id] = error.localizedDescription
+            throw error
+        }
+    }
+
+    func pendingDownloads(_ id: UUID) -> [String] {
+        guard let g = game(id) else { return [] }
+        let engine = resolvedEngine(g), kind = runtimeKind(g)
+        let prefix = prefixURL(id, kind), template = templateURL(kind)
+        let hasEnvironment = fm.exists(prefix.appendingPathComponent("system.reg"))
+        let hasTemplate = fm.exists(template.appendingPathComponent("system.reg"))
+        var f = AssistantRuns.StartFacts()
+        f.engineTitle = kind.title
+        f.engineInstalled = runtimes.info[kind] != nil
+        if engine == .mullion && g.arch == .x86 {
+            f.mullion32 = true
+            let asset = runtimes.info[.arm64]?.asset
+            f.metalSharpFullBuild = asset?.lowercased().hasSuffix(".zip") == true
+            let marker = (try? String(contentsOf: templateURL(.arm64).appendingPathComponent(".ferry-template"), encoding: .utf8)) ?? ""
+            f.mullionTemplateCurrent = asset.map { marker.contains($0) } == true && marker.contains("libs\(Self.librarySetVersion)")
+        }
+        let s = g.settings
+        f.usesDXVK = engine == .dxvk
+            || (s.dxvkD3D9 && engine != .mach9 && !usesBundledDXVK(g, engine: engine) && !usesBetaDXVK(g, engine: engine))
+        f.dxvkInstalled = runtimes.info[.dxvk] != nil
+        f.shared = g.sharedWith != nil
+        f.buildsTemplateOnFirstUse = kind == .mach9 || kind == .x64
+        f.hasEnvironment = hasEnvironment
+        f.hasTemplate = hasTemplate
+        f.librariesInstalled = g.runtimesInstalled.contains(kind.rawValue)
+        f.autoLibraries = UserDefaults.standard.object(forKey: "autoRuntimes") as? Bool ?? true
+        var components: [Component] = []
+        for lib in Self.windowsLibraries where Component.isOn(lib.component) && !(lib.needs32bitWine && !kind.supports32bit)
+                                               && !runtimes.isCached(lib.file) && !components.contains(lib.component) {
+            if case .cacheOnly = lib.method { continue }
+            components.append(lib.component)
+        }
+        f.uncachedLibraries = components.map { $0.title + ($0.approxBytes > 0 ? " (about \($0.approxBytes / 1_000_000) MB)" : "") }
+        f.x86 = g.arch == .x86
+        f.dgVoodooOn = s.dgVoodoo
+        f.dgVoodooReady = dgVoodooFiles() != nil
+        f.cncDdrawOn = s.cncDdraw
+        f.cncDdrawReady = cachedCncDdrawDLL() != nil
+        f.cncDdrawZipCached = runtimes.isCached("cnc-ddraw.zip")
+        f.ddrawBesideGame = fm.exists(URL(fileURLWithPath: g.exePath).deletingLastPathComponent().appendingPathComponent("ddraw.dll"))
+        f.directMusicOrPlayOn = s.nativeDirectMusic || s.nativeDirectPlay
+        f.legacyDirectXReady = cachedLegacyDirectX() != nil
+        f.legacyPackageCached = Self.windowsLibraries.first { $0.component == .legacyDirectX }.map { runtimes.isCached($0.file) } ?? false
+        f.dotNetProgram = PEParser.parse(URL(fileURLWithPath: g.exePath))?.isDotNet == true
+        f.dotNet48On = Component.isOn(.dotNet48)
+        let environment: URL? = f.mullion32 ? nil : hasEnvironment ? prefix : hasTemplate ? template : nil
+        if let windows = environment?.appendingPathComponent("drive_c/windows", isDirectory: true) {
+            f.dotNetInEnvironment = fm.exists(windows.appendingPathComponent("Microsoft.NET/Framework/v4.0.30319/clr.dll"))
+                || fm.exists(windows.appendingPathComponent("Microsoft.NET/Framework64/v4.0.30319/clr.dll"))
+            f.managedDirectXInEnvironment = fm.exists(windows.appendingPathComponent("assembly/GAC/Microsoft.DirectX.Direct3D"))
+        } else {
+            f.dotNetInEnvironment = nil
+            f.managedDirectXInEnvironment = nil
+        }
+        f.dotNetLoaderReady = cachedDotNetLoader() != nil
+        f.dotNetPackageCached = runtimes.isCached(Self.dotNet40File)
+        f.managedDirectXReady = cachedManagedDirectX() != nil
+        f.directXPackageCached = Self.windowsLibraries.first { $0.component == .directX }.map { runtimes.isCached($0.file) } ?? false
+        f.sevenZipInstalled = runtimes.sevenZipInstalled
+        return AssistantRuns.startDownloads(f)
     }
 
     func rovReportURL(_ id: UUID) -> URL { logURL(id, "rov-detected").deletingPathExtension().appendingPathExtension("txt") }
@@ -780,8 +918,8 @@ final class AppModel: ObservableObject {
         return names.contains { name in antiCheat.contains { name.lowercased().contains($0) } }
     }
 
-    static let autoTessellationStart = 28
-    static let tessellationLevels = [1, 8, 16, 24, 32, 48, 64]
+    static let autoTessellationStart = SettingsCatalog.autoTessellationStart
+    static let tessellationLevels = SettingsCatalog.tessellationLevels
 
     func tessellationCap(_ g: Game) -> Int? {
         guard g.drawsWith == .dx11 else { return nil }
@@ -797,7 +935,7 @@ final class AppModel: ObservableObject {
                 (try? Data(contentsOf: log, options: .alwaysMapped))?.range(of: Data("Failed to create tessellation raster PSO".utf8)) != nil
             }.value
             guard refused, var g = game(id), g.settings.maxTessellation == 0 else { return }
-            g.learnedTessellation = max(1, (g.learnedTessellation ?? Self.autoTessellationStart) - 4)
+            g.learnedTessellation = max(Self.tessellationLevels[0], (g.learnedTessellation ?? Self.autoTessellationStart) - 4)
             update(g)
         }
     }
@@ -1220,6 +1358,7 @@ final class AppModel: ObservableObject {
         checkTessellation(id, engine: engine)
         discordGameEnded(id)
         let stoppedByUser = stopping.remove(id) != nil
+        lastEnded[id] = AssistantRuns.GameEnd(status: status, seconds: seconds, stoppedByFerry: stoppedByUser, at: Date())
         let crashed = !stoppedByUser && status != 0 && seconds < 20
         if let watch = installWatches.removeValue(forKey: id) {
             Task {

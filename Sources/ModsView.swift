@@ -7,6 +7,7 @@ struct PendingMod: Identifiable {
     var step = 0
     let result: ModResult?
     let ownFile: URL?
+    var handoff: AssistantHandoff? = nil
 
     var title: String { result?.title ?? ownFile.map { $0.deletingPathExtension().lastPathComponent } ?? "This mod" }
     var unreviewed: Bool { result.map { !$0.reviewed } ?? false }
@@ -80,6 +81,7 @@ struct ModsView: View {
             return true
         } isTargeted: { dropTargeted = $0 }
         .task { if let g = game { search.start(game: g) } }
+        .onChange(of: model.assistantHandoff?.id, initial: true) { takeHandoff() }
         .onDisappear {
             search.stop()
             dropPending()
@@ -288,7 +290,7 @@ struct ModsView: View {
         }
     }
 
-    private func autoInstall(_ r: ModResult, _ g: Game) {
+    private func autoInstall(_ r: ModResult, _ g: Game, handoff: AssistantHandoff? = nil) {
         let model = self.model, session = search
         working = r.id
         notes[r.id] = nil
@@ -296,12 +298,23 @@ struct ModsView: View {
             defer { working = nil }
             do {
                 let prep = try await model.downloadModResult(r, game: g)
-                present(prep, result: r, ownFile: nil, session: session, model: model)
+                present(prep, result: r, ownFile: nil, session: session, model: model, handoff: handoff)
             } catch {
+                handoff?.finish("Ferry couldn't get “\(r.title)”: \(error.localizedDescription)")
                 if session.windowClosed { return }
                 notice = Notice(title: "Couldn't get \(r.title)", text: error.localizedDescription)
             }
         }
+    }
+
+    private func takeHandoff() {
+        guard let h = model.assistantHandoff, !h.taken, h.game == gameID, case .installMod(let r) = h.ask, let g = game else { return }
+        h.taken = true
+        guard working == nil, pending == nil else {
+            h.finish("The Mods window is busy with another mod. Try again when it's done.")
+            return
+        }
+        autoInstall(r, g, handoff: h)
     }
 
     private func manualInstall(_ r: ModResult, _ g: Game) {
@@ -389,19 +402,28 @@ struct ModsView: View {
         }
     }
 
-    private func present(_ prep: ModPreparation, result: ModResult?, ownFile: URL?, session: ModsSearch, model: AppModel) {
-        guard !session.windowClosed, pending == nil else { model.discardModPreparation(prep); return }
+    private func present(_ prep: ModPreparation, result: ModResult?, ownFile: URL?, session: ModsSearch, model: AppModel,
+                         handoff: AssistantHandoff? = nil) {
+        guard !session.windowClosed, pending == nil else {
+            handoff?.finish("The Mods window was closed, so nothing was installed.")
+            model.discardModPreparation(prep)
+            return
+        }
         if case .browser(let url, let reason) = prep {
             NSWorkspace.shared.open(url)
+            handoff?.finish("Nothing was installed: \(reason) Ferry opened its page in the browser for the person.")
             if let r = result { notes[r.id] = reason } else { notice = Notice(title: "Opened in your browser", text: reason) }
             model.discardModPreparation(prep)
             return
         }
-        pending = PendingMod(prep: prep, result: result, ownFile: ownFile)
+        pending = PendingMod(prep: prep, result: result, ownFile: ownFile, handoff: handoff)
     }
 
     private func dropPending() {
-        if let p = pending { model.discardModPreparation(p.prep) }
+        if let p = pending {
+            p.handoff?.finish("The person closed the confirmation, so nothing was installed.")
+            model.discardModPreparation(p.prep)
+        }
         pending = nil
     }
 
@@ -412,14 +434,17 @@ struct ModsView: View {
             onReplace: { next in
                 guard !session.windowClosed, pending?.id == item.id else { model.discardModPreparation(next); return }
                 if case .browser = next {
+                    let handoff = item.handoff
+                    pending?.handoff = nil
                     dropPending()
-                    present(next, result: item.result, ownFile: item.ownFile, session: session, model: model)
+                    present(next, result: item.result, ownFile: item.ownFile, session: session, model: model, handoff: handoff)
                     return
                 }
                 pending?.prep = next
                 pending?.step += 1
             },
             onInstalled: { mod in
+                item.handoff?.finish("Installed “\(mod.name)” in \(game?.name ?? "the game")" + (mod.addedGameID != nil ? ", and added it to the library." : "."))
                 dropPending()
                 if let r = item.result {
                     let added = mod.addedGameID != nil && !(game?.mods.contains { $0.id != mod.id && $0.addedGameID == mod.addedGameID } ?? false)
@@ -427,6 +452,7 @@ struct ModsView: View {
                 }
             },
             onManual: {
+                item.handoff?.finish("Nothing was installed: the person chose to install it by hand.")
                 dropPending()
                 if let r = item.result, let g = game {
                     manualInstall(r, g)
@@ -437,6 +463,19 @@ struct ModsView: View {
             },
             onClose: { dropPending() })
             .environmentObject(model)
+    }
+}
+
+extension ModSearch {
+    @MainActor
+    static func online(game: Game, words: String) async -> (results: [ModResult], page: (page: String, text: String)?, failure: String?) {
+        async let wiki = GameWiki.wikitext(exe: URL(fileURLWithPath: game.exePath))
+        let github = words.isEmpty ? nil : await GitHubSearch.repositories("\(game.name) \(words)")
+        let page = await wiki
+        var found = page.map { fixes(fromWikitext: $0.text) } ?? []
+        found += github?.results ?? []
+        if !words.isEmpty { found = found.filter { matches($0, query: words) } }
+        return (found, page, github?.failure)
     }
 }
 
@@ -467,17 +506,12 @@ private final class ModsSearch: ObservableObject {
         let words = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searching = true
         message = nil
-        async let wiki = GameWiki.wikitext(exe: URL(fileURLWithPath: game.exePath))
-        let github = words.isEmpty ? nil : await GitHubSearch.repositories("\(game.name) \(words)")
-        let page = await wiki
+        let (found, page, failure) = await ModSearch.online(game: game, words: words)
         guard mine == generation else { return }
 
-        var found = page.map { ModSearch.fixes(fromWikitext: $0.text) } ?? []
-        found += github?.results ?? []
-        if !words.isEmpty { found = found.filter { ModSearch.matches($0, query: words) } }
         wikiPage = page?.page
         results = found
-        message = github?.failure
+        message = failure
         if found.isEmpty && message == nil {
             if !words.isEmpty {
                 message = "Nothing found for “\(words)”. Try other words, or use Search the Web below."

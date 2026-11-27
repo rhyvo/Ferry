@@ -1,19 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
 
-enum IconMode: String, Codable, CaseIterable, Identifiable {
-    case auto, custom, standard
-    var id: String { rawValue }
-
-    func title(_ noun: String) -> String {
-        switch self {
-        case .auto: return "From \(noun) files"
-        case .custom: return "Custom image"
-        case .standard: return "Default"
-        }
-    }
-}
-
 enum PEIconReader {
     static func largestIcon(in exe: URL) -> NSImage? {
         guard let data = try? Data(contentsOf: exe, options: .alwaysMapped), data.count > 64 else { return nil }

@@ -2,6 +2,21 @@ import AppKit
 import SwiftUI
 
 @main
+enum FerryMain {
+    @MainActor static func main() {
+        #if !FERRY_RELEASE
+        let args = CommandLine.arguments
+        if args.count > 1, args[1] == "--assistant-tool" { AssistantDebug.run(Array(args.dropFirst(2))) }
+        if args.count > 1, args[1] == "--assistant-ask" { AssistantDebug.runAsk(Array(args.dropFirst(2))) }
+        if args.count > 1, args[1] == "--assistant-session-check" { AssistantDebug.runSessionCheck() }
+        if args.count > 1, args[1] == "--assistant-chat-trace" { AssistantDebug.runChatTrace(Array(args.dropFirst(2))) }
+        if args.count > 1, args[1] == "--mcp-client-check" { AssistantDebug.runMCPClientCheck(Array(args.dropFirst(2))) }
+        if args.count > 1, args[1] == "--assistant-card-check" { AssistantDebug.runCardCheck(Array(args.dropFirst(2))) }
+        #endif
+        FerryApp.main()
+    }
+}
+
 struct FerryApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel.shared
@@ -87,6 +102,8 @@ struct FerryCommands: Commands {
                 .disabled(id == nil)
             Button("Mods…") { model.modsGame = id }
                 .disabled(id == nil)
+            Button("Ask the Assistant…") { model.openAssistant(for: id) }
+            .disabled(id == nil)
             Divider()
             Button("Show Log") { if let id { model.showLog(id, "game") } }
                 .disabled(id == nil)
@@ -143,7 +160,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { AppModel.shared.runtimes.stopDownloads() }
+        MainActor.assumeIsolated {
+            AppModel.shared.runtimes.stopDownloads()
+            AppModel.shared.assistantServer?.stop()
+            AppModel.shared.closeAssistant()
+        }
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

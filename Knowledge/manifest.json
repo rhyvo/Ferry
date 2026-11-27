@@ -1,0 +1,42 @@
+{
+  "version": 4,
+  "minFerry": "1.3.0",
+  "suggestedModels": {
+    "claude": "claude-opus-5-5",
+    "chatgpt": "gpt-6.2-astra",
+    "gemini": "gemini-3.5-flash-lite"
+  },
+  "files": [
+    "how-it-works/apple-limits.md",
+    "how-it-works/engines.md",
+    "how-it-works/environments.md",
+    "how-it-works/graphics-apis.md",
+    "how-it-works/rosetta-and-fex.md",
+    "how-it-works/wine.md",
+    "known-issues/blank-launcher-webview2.md",
+    "known-issues/cant-run.md",
+    "known-issues/directmusic-directplay.md",
+    "known-issues/dotnet-launchers.md",
+    "known-issues/dx10-stream-output.md",
+    "known-issues/dx9-dxvk-black-screen.md",
+    "known-issues/fast-sync-stall.md",
+    "known-issues/game-closes-at-start.md",
+    "known-issues/garbled-text-fonts.md",
+    "known-issues/launchers-and-games.md",
+    "known-issues/mac-settings.md",
+    "known-issues/missing-files.md",
+    "known-issues/mouse-pointer-mach9.md",
+    "known-issues/old-games-ddraw-glide.md",
+    "known-issues/own-dlls-reshade.md",
+    "known-issues/pink-videos.md",
+    "known-issues/playstation-controllers.md",
+    "known-issues/saves-and-engines.md",
+    "known-issues/shader-cache.md",
+    "known-issues/steam-games.md",
+    "known-issues/tessellation-shards.md",
+    "known-issues/tessellation.md",
+    "ferry/about.md",
+    "ferry/assistant.md",
+    "ferry/release-notes.md"
+  ]
+}

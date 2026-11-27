@@ -20,6 +20,8 @@ extension AppModel {
         let dayAgo = Date().addingTimeInterval(-24 * 3600)
         if onOpen || (daily && (lastFerryCheck ?? .distantPast) < dayAgo) { await checkFerryVersion() }
         if onOpen || (daily && (runtimes.lastUpdateCheck ?? .distantPast) < dayAgo) { await runtimes.checkForUpdates() }
+        if (onOpen || daily) && UserDefaults.standard.bool(forKey: AISettingsView.mcpEnabledKey)
+            && (lastKnowledgeCheck ?? .distantPast) < dayAgo { await checkKnowledgePack() }
         promptIfNew()
     }
 
@@ -68,14 +70,7 @@ extension AppModel {
         ferryUpdate = Self.isNewer(latest, than: mine) ? latest : nil
     }
 
-    static func isNewer(_ a: String, than b: String) -> Bool {
-        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(x.count, y.count) {
-            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
-            if p != q { return p > q }
-        }
-        return false
-    }
+    static func isNewer(_ a: String, than b: String) -> Bool { KnowledgeManifest.isNewer(a, than: b) }
 
     var updateSummary: String {
         var lines = runtimes.availableUpdates.map { kind in

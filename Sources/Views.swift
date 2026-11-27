@@ -78,41 +78,49 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, model.games.isEmpty ? 16 : 12)
             if !model.games.isEmpty { searchField }
-            if model.games.isEmpty {
-                Spacer()
-                Text("Games and programs you add show up here.")
-                    .foregroundStyle(.secondary)
-                Button {
-                    model.installSteam()
-                } label: {
-                    Label("Install Steam", systemImage: "arrow.down.circle")
-                }
-                .padding(.top, 6)
-                Spacer()
-            } else if shownGames.isEmpty {
-                Spacer()
-                Text("No games or apps match \u{201C}\(search)\u{201D}.")
-                    .foregroundStyle(.secondary)
-                Spacer()
-            } else {
-                List(selection: $selection) {
-                    ForEach(shownGames) { game in
-                        GameRow(game: game).tag(game.id)
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    if model.games.isEmpty {
+                        Spacer()
+                        Text("Games and programs you add show up here.")
+                            .foregroundStyle(.secondary)
+                        Button {
+                            model.installSteam()
+                        } label: {
+                            Label("Install Steam", systemImage: "arrow.down.circle")
+                        }
+                        .padding(.top, 6)
+                        Spacer()
+                    } else if shownGames.isEmpty {
+                        Spacer()
+                        Text("No games or apps match \u{201C}\(search)\u{201D}.")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    } else {
+                        List(selection: $selection) {
+                            ForEach(shownGames) { game in
+                                GameRow(game: game).tag(game.id)
+                            }
+                        }
+                        .listStyle(.inset)
+                        .focused($listFocused)
+                        .onExitCommand { selection = nil }
+                        .onAppear { listFocused = true }
+                        .onChange(of: selection) { _, new in if new != nil { listFocused = true } }
+                        .contextMenu(forSelectionType: UUID.self) { ids in
+                            if let id = ids.first, let g = model.game(id) { GameActions(game: g) }
+                        } primaryAction: { ids in
+                            if let id = ids.first, !model.running.contains(id), !model.preparing.contains(id) { model.play(id) }
+                        }
                     }
+                    AssistantDock(space: geo.size.height)
                 }
-                .listStyle(.inset)
-                .focused($listFocused)
-                .onExitCommand { selection = nil }
-                .onAppear { listFocused = true }
-                .onChange(of: selection) { _, new in if new != nil { listFocused = true } }
-                .contextMenu(forSelectionType: UUID.self) { ids in
-                    if let id = ids.first, let g = model.game(id) { GameActions(game: g) }
-                } primaryAction: { ids in
-                    if let id = ids.first, !model.running.contains(id), !model.preparing.contains(id) { model.play(id) }
-                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.easeOut(duration: 0.18), value: model.assistantDockOpen)
             }
         }
         .focusedSceneValue(\.selectedGame, selection)
+        .onChange(of: model.assistantDockOpen) { _, open in if !open { listFocused = true } }
         .animation(.easeOut(duration: 0.18), value: targeted)
         .dropDestination(for: URL.self) { urls, _ in
             var checking = false
@@ -875,31 +883,29 @@ func settingLabel(_ title: String, needs: String?) -> some View {
 }
 
 struct FrameLimitPicker: View {
-    @EnvironmentObject var model: AppModel
     @Binding var game: Game
+    let c: SettingContext
 
     var body: some View {
         let vsync = game.settings.vsync
-        let hz = Platform.displayHz
+        let hz = c.displayHz
         let current = game.settings.fpsLimit
         let limits = [30, 40, 45, 60, 90, 120].filter { !vsync || $0 < hz || $0 == current }
-        if model.hasFrameLimiter(game) {
-            Picker("Frame rate limit", selection: $game.settings.fpsLimit) {
+        if c.applies("fpsLimit") {
+            Picker(c.title("fpsLimit"), selection: $game.settings.fpsLimit) {
                 Text(vsync ? "Display rate (\(hz) FPS)" : "Off").tag(0)
                 ForEach(limits, id: \.self) { Text("\($0) FPS").tag($0) }
             }
-            .info(vsync
-                  ? "With VSync on, the \(game.noun) runs at the display's rate (\(hz) FPS), or at a lower limit picked here, with every frame still shown on a refresh. A limit a little below what the \(game.noun) can hold keeps frame times even when it can't reach \(hz)."
-                  : "Caps the frame rate. Lower limits keep frame pacing even, leave the processor room for sound, and run cooler on battery.")
+            .info(c.info("fpsLimit"))
         } else {
-            LabeledContent("Frame rate limit") {
-                Text("Use the \(game.noun)'s own setting (Ferry can't limit it on \(model.resolvedEngine(game).short))")
+            LabeledContent(c.title("fpsLimit")) {
+                Text("Use the \(game.noun)'s own setting (Ferry can't limit it on \(c.engine.short))")
                     .foregroundStyle(.secondary)
             }
-            .info("Ferry can't limit the frame rate of this \(game.noun)'s graphics on this engine, or the \(game.noun) has anti-cheat. Use the \(game.noun)'s own setting instead.")
+            .info(c.info("fpsLimit"))
         }
-        Toggle("VSync", isOn: $game.settings.vsync)
-            .info("Shows each frame in step with the display's refresh, so the picture doesn't tear (a frame showing partway through another), and keeps the \(game.noun) from drawing more frames than the display can show: \(hz) a second on this Mac's display. The time it would spend on frames you never see goes to the \(game.noun) and macOS instead, and the Mac runs cooler. Use the frame rate limit with it to cap lower. Mullion's DirectX 10–12 can still tear. Turn it off for the highest frame rate and lowest input delay.")
+        Toggle(c.title("vsync"), isOn: $game.settings.vsync)
+            .info(c.info("vsync"))
     }
 }
 
@@ -1032,6 +1038,7 @@ struct GameActions: View {
         Button("Show Log") { model.showLog(game.id, "game") }
         Button("Troubleshoot…") { model.troubleshootGame = game.id }
         Button("Mods…") { model.modsGame = game.id }
+        Button("Ask the Assistant…") { model.openAssistant(for: game.id) }
         Divider()
         Button("Add Program to This Environment…") { model.addProgram(toEnvironmentOf: game.id) }
     }
@@ -1069,13 +1076,40 @@ struct SettingInfo: ViewModifier {
     }
 }
 
+extension AppModel {
+    func settingContext(_ g: Game) -> SettingContext {
+        SettingContext(settings: g.settings, engine: resolvedEngine(g), graphics: g.graphics, arch: g.arch,
+                       dgVoodooInstalled: componentStatus[.dgVoodoo]?.installed ?? false,
+                       kosmicKrispAvailable: runtimes.kosmicKrispDriver() != nil,
+                       intelMullionInstalled: runtimes.info[.x64] != nil, mach9Available: Platform.mach9Available,
+                       sharedEnvironmentOwner: g.sharedWith == nil ? nil : environmentOwner(of: g).name,
+                       noun: g.noun, rosettaAvailable: runtimes.rosetta, betaDXVKInstalled: betaDXVK32() != nil,
+                       dxmtInstalled: componentStatus[.dxmt]?.installed ?? false,
+                       legacyDirectXInstalled: componentStatus[.legacyDirectX]?.installed ?? false,
+                       webView2Installed: webView2Installed, usesSDKXAudio2: usesSDKXAudio2(g),
+                       hasFrameLimiter: hasFrameLimiter(g), displayHz: Platform.displayHz,
+                       betaDXVKVersion: betaDXVKVersion, upstreamDXMTVersion: upstreamDXMTVersion)
+    }
+}
+
+extension AppModel {
+    func fixContext(_ g: Game) -> FixContext {
+        FixContext(setting: settingContext(g), fallbackOrder: fallbackOrder(for: g),
+                   lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, rovSeen: g.rovSeen,
+                   learnedTessellation: g.learnedTessellation, usesUpstreamDXMT: usesUpstreamDXMT(g, engine: resolvedEngine(g)),
+                   componentInstalled: Set(componentStatus.filter { $0.value.installed }.map { $0.key.rawValue }))
+    }
+}
+
 struct GameSettingsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let gameID: UUID
     @State private var draft: Game? = nil
+    @State private var opened: Game? = nil
     @State private var programs: [Analyzer.ProgramCandidate] = []
     @State private var confirmRemove = false
+    @State private var removeHandoff: AssistantHandoff? = nil
     @State private var tab = SettingsTab.general
     @State private var showAdvanced = false
     @Environment(\.openWindow) private var openWindow
@@ -1104,6 +1138,7 @@ struct GameSettingsView: View {
                 .padding([.horizontal, .top], 16)
                 .padding(.bottom, 4)
                 Form {
+                    let c = model.settingContext(game.wrappedValue)
                     if tab == .general {
                         Section(game.wrappedValue.noun.capitalized) {
                             TextField("Name", text: game.name)
@@ -1163,12 +1198,12 @@ struct GameSettingsView: View {
                             }
                         }
                         Section {
-                            Picker("Graphics engine", selection: game.settings.engine) {
+                            Picker(c.title("engine"), selection: game.settings.engine) {
                                 ForEach(EngineID.allCases.filter { $0.runtime.availableHere || $0 == .auto || $0 == game.wrappedValue.settings.engine }) {
                                     Text($0 == .auto ? "Automatic (\(model.recommendedEngine(game.wrappedValue).short))" : $0.title).tag($0)
                                 }
                             }
-                            .info("Which translator runs this \(game.wrappedValue.noun). Automatic picks the best one for its graphics and architecture; the compatibility check shows why.")
+                            .info(c.info("engine"))
                             let engine = game.wrappedValue.settings.engine
                             let recommended = model.recommendedEngine(game.wrappedValue)
                             let autoNeeds: String? = engine == .auto ? "Already on Automatic, which uses it."
@@ -1186,50 +1221,46 @@ struct GameSettingsView: View {
                         } footer: {
                             Text("Using \(model.resolvedEngine(game.wrappedValue).short). Each engine keeps its own Windows environment; saves are shared between them.")
                         }
+                        AssistantChangesView(game: gameID)
                     }
                     if tab == .graphics {
                         let g = game.wrappedValue
-                        let engine = model.resolvedEngine(g)
-                        let owner: String? = g.sharedWith == nil ? nil
-                            : "Set in \(model.environmentOwner(of: g).name)'s settings, whose Windows environment this uses."
                         Section {
-                            if g.graphics.hasDX9Fallback {
-                                Toggle("Use DirectX 9", isOn: game.settings.useDX9)
-                                    .info("Makes a DirectX 10 or 11 \(g.noun) use its older DirectX 9 renderer, for games with no setting of their own to switch. Ferry hides DirectX 10 and 11 from it and starts it with -dx9. Try it if the \(g.noun) crashes or draws wrong; turn it off if it won't start, since not every game still has a DirectX 9 renderer.")
+                            if c.applies("useDX9") {
+                                Toggle(c.title("useDX9"), isOn: game.settings.useDX9)
+                                    .info(c.info("useDX9"))
                             }
-                            Toggle(engine == .mach9 ? "MetalFX upscaling" : "DLSS via MetalFX", isOn: game.settings.metalFX)
-                                .info(engine == .mach9
-                                      ? "Renders at 75% resolution and upscales with MetalFX for a higher frame rate."
-                                      : "When DLSS is selected in the \(g.noun)'s graphics options, D3DMetal upscales with Apple's MetalFX instead.")
-                            Toggle(isOn: game.settings.retina) { settingLabel("Retina resolution", needs: owner) }
-                                .disabled(owner != nil)
-                                .info("Renders at the display's full pixel resolution. Sharper, but slower.")
-                            if engine == .d3dmetal {
+                            Toggle(c.title("metalFX"), isOn: game.settings.metalFX)
+                                .info(c.info("metalFX"))
+                            Toggle(isOn: game.settings.retina) { settingLabel(c.title("retina"), needs: c.needs("retina")) }
+                                .disabled(c.needs("retina") != nil)
+                                .info(c.info("retina"))
+                            if c.applies("gameMode") {
                                 Picker(selection: game.settings.gameMode) {
                                     Text(g.usesGameMode && g.settings.gameMode == 0 ? "Automatic (on: it's a game)"
                                          : g.settings.gameMode == 0 ? "Automatic (off: it's an app)" : "Automatic").tag(0)
                                     Text("On").tag(1)
                                     Text("Off").tag(2)
                                 } label: {
-                                    settingLabel("macOS Game Mode", needs: owner)
+                                    settingLabel(c.title("gameMode"), needs: c.needs("gameMode"))
                                 }
-                                .disabled(owner != nil)
-                                .info("Game Mode gives a game more of the processor and graphics and lowers controller and AirPods latency. Automatic turns it on for programs where Ferry found game graphics or a game engine, and off for apps.")
+                                .disabled(c.needs("gameMode") != nil)
+                                .info(c.info("gameMode"))
                             }
                             Picker(selection: game.settings.uiScale) {
                                 Text("Automatic").tag(0)
                                 Text("Normal (100%)").tag(100)
                                 Text("Large (200%)").tag(200)
                             } label: {
-                                settingLabel("Interface size", needs: owner)
+                                settingLabel(c.title("uiScale"), needs: c.needs("uiScale"))
                             }
-                            .disabled(owner != nil)
-                            .info("Windows' scaling for menus, text and buttons. Automatic uses 200% with Retina for apps (so they're sharp at their usual size) and 100% for games, which handle their own resolution.")
-                            Toggle("Performance HUD", isOn: game.settings.metalHUD)
-                                .info("Shows the frame rate and GPU statistics (Metal HUD) over the \(g.noun).")
-                            FrameLimitPicker(game: game)
-                            Toggle("Native full-screen button", isOn: game.settings.macFullScreenButton)
-                                .info("Enables the green window button for a windowed \(g.noun), opening it in a macOS full-screen space.")
+                            .disabled(c.needs("uiScale") != nil)
+                            .info(c.info("uiScale"))
+                            Toggle(c.title("metalHUD"), isOn: game.settings.metalHUD)
+                                .info(c.info("metalHUD"))
+                            FrameLimitPicker(game: game, c: c)
+                            Toggle(c.title("macFullScreenButton"), isOn: game.settings.macFullScreenButton)
+                                .info(c.info("macFullScreenButton"))
                         } header: {
                             Text("Graphics")
                         } footer: {
@@ -1237,114 +1268,112 @@ struct GameSettingsView: View {
                         }
                         Section {
                             if showAdvanced {
-                                if engine == .d3dmetal {
-                                    Toggle("Report graphics card as NVIDIA", isOn: game.settings.reportNVIDIA)
-                                        .info("D3DMetal tells games the Mac has an AMD card. Some games take AMD-only paths or workarounds that break on a Mac; this makes them see an NVIDIA GeForce RTX 3060 instead.")
-                                    let nvidia = g.settings.reportNVIDIA
+                                if c.applies("reportNVIDIA") {
+                                    Toggle(c.title("reportNVIDIA"), isOn: game.settings.reportNVIDIA)
+                                        .info(c.info("reportNVIDIA"))
+                                }
+                                if c.applies("hideROV") {
                                     Toggle(isOn: game.settings.hideROV) {
-                                        settingLabel("Hide ROV support", needs: nvidia ? nil : "Needs Report graphics card as NVIDIA on.")
+                                        settingLabel(c.title("hideROV"), needs: c.needs("hideROV"))
                                     }
-                                        .disabled(!nvidia)
+                                        .disabled(c.needs("hideROV") != nil)
                                         .padding(.leading, 18)
-                                        .info("Fixes some DirectX 12 games that show a black screen on D3DMetal. Tells the \(g.noun) the graphics card has no rasterizer-ordered views, so it uses its ordinary drawing path. Needs Report graphics card as NVIDIA: some games use ROV on an AMD card whatever they're told.")
+                                        .info(c.info("hideROV"))
                                     if g.rovSeen && !g.settings.hideROV {
                                         Text("Ferry saw this \(g.noun) draw with ROV, which D3DMetal can show as black. Hide ROV support is recommended.")
                                             .font(.caption).foregroundStyle(.orange)
                                     }
                                 }
-                                if model.usesSDKXAudio2(g) {
-                                    Toggle("Microsoft XAudio2", isOn: game.settings.nativeXAudio2)
-                                        .info("This \(g.noun) plays sound with an older XAudio2 from the DirectX SDK. Wine's own version can hold back or drop sounds such as dialogue, so Ferry loads Microsoft's copy instead. Turn off if the game's sound breaks.")
+                                if c.applies("nativeXAudio2") {
+                                    Toggle(c.title("nativeXAudio2"), isOn: game.settings.nativeXAudio2)
+                                        .info(c.info("nativeXAudio2"))
                                 }
-                                let intelBuild = model.runtimes.info[.x64] != nil
-                                let onRosetta = g.settings.mullionRosetta && intelBuild && model.runtimes.rosetta
-                                if engine == .mullion {
+                                let onRosetta = c.onRosetta
+                                if c.applies("mullionRosetta") {
                                     Picker(selection: game.settings.mullionRosetta) {
                                         Text("FEX").tag(false)
                                         Text("Rosetta 2").tag(true)
                                     } label: {
-                                        settingLabel("CPU translation", needs: intelBuild ? nil
-                                                     : "Rosetta 2 needs D3DMetal 4 (beta) from Settings ▸ Components, which includes MetalSharp's Intel build.")
+                                        settingLabel(c.title("mullionRosetta"), needs: c.needs("mullionRosetta"))
                                     }
-                                    .disabled(!intelBuild && !g.settings.mullionRosetta)
-                                    .info("How the \(g.noun)'s Intel code runs on Apple silicon. FEX works without Rosetta, so it keeps working once macOS drops Rosetta. Rosetta 2 is usually faster, and uses MetalSharp's Intel build of the same Wine (it comes with D3DMetal 4 in Settings ▸ Components) in a Windows environment of its own. Without Rosetta or that build, Mullion uses FEX.")
-                                    if intelBuild && g.settings.mullionRosetta && !model.runtimes.rosetta {
+                                    .disabled(c.needs("mullionRosetta") != nil && !g.settings.mullionRosetta)
+                                    .info(c.info("mullionRosetta"))
+                                    if c.intelMullionInstalled && g.settings.mullionRosetta && !c.rosettaAvailable {
                                         Text("Rosetta 2 isn't available on this Mac, so Mullion uses FEX.")
                                             .font(.caption).foregroundStyle(.orange)
                                     }
-                                    Picker("MetalSharp renderer", selection: game.settings.metalSharpBackend) {
+                                }
+                                if c.applies("metalSharpBackend") {
+                                    Picker(c.title("metalSharpBackend"), selection: game.settings.metalSharpBackend) {
                                         Text("Automatic (Mullion)").tag("")
                                         Text(g.arch == .x86 ? "DXVK (64-bit only)" : "DXVK").tag("dxvk")
                                         Text("WineD3D").tag("wine")
                                         Text("VKD3D-Proton (DirectX 12)").tag("vkd3d")
                                     }
-                                    .info("How Mullion draws DirectX. Automatic uses Mullion for DirectX 10–12 and WineD3D for DirectX 9 and older. DXVK goes through Vulkan (64-bit only), WineD3D uses Wine's own DirectX for every version, and VKD3D-Proton is for DirectX 12 games that draw incorrectly on Mullion.")
-                                    Picker("OpenGL implementation", selection: game.settings.metalSharpOpenGL) {
+                                    .info(c.info("metalSharpBackend"))
+                                }
+                                if c.applies("metalSharpOpenGL") {
+                                    Picker(c.title("metalSharpOpenGL"), selection: game.settings.metalSharpOpenGL) {
                                         Text("WineMetalGL (default)").tag("")
                                         Text("Apple's OpenGL").tag("wine")
                                     }
-                                    .info("Which OpenGL draws OpenGL games, and DirectX 9 and older through WineD3D. WineMetalGL supports OpenGL 4.6 on Metal; Apple's OpenGL stops at 4.1 but is long-tested. Try Apple's if the \(g.noun) draws incorrectly.")
-                                    let hasKosmicKrisp = model.runtimes.kosmicKrispDriver() != nil
+                                    .info(c.info("metalSharpOpenGL"))
+                                }
+                                if c.applies("mullionVulkan") {
                                     Picker(selection: Binding(
                                         get: { onRosetta ? "" : game.wrappedValue.settings.mullionVulkan },
                                         set: { if !onRosetta { game.wrappedValue.settings.mullionVulkan = $0 } })) {
                                         Text("MoltenVK (default)").tag("")
                                         Text("KosmicKrisp (from Mach9)").tag("kosmickrisp")
                                     } label: {
-                                        settingLabel("Vulkan driver", needs: onRosetta ? "Only with CPU translation set to FEX: KosmicKrisp doesn't run through Rosetta 2, which uses MoltenVK."
-                                                     : hasKosmicKrisp ? nil : "Install Mach9 in Settings ▸ Components first.")
+                                        settingLabel(c.title("mullionVulkan"), needs: c.needs("mullionVulkan"))
                                     }
-                                    .disabled(!hasKosmicKrisp || onRosetta)
-                                    .info("What Vulkan games, and the DXVK and VKD3D-Proton renderers, draw through. KosmicKrisp runs all of Vulkan 1.4 on Metal; MoltenVK is the long-tested default. Try the other one if the \(g.noun) crashes or draws wrong.")
+                                    .disabled(c.needs("mullionVulkan") != nil)
+                                    .info(c.info("mullionVulkan"))
                                 }
-                                if engine == .mach9 {
-                                    Picker("Mach9 renderer", selection: game.settings.mach9Direct3D) {
+                                if c.applies("mach9Direct3D") {
+                                    Picker(c.title("mach9Direct3D"), selection: game.settings.mach9Direct3D) {
                                         Text("Metal: mtld3d, DXMT (default)").tag("")
                                         Text("WineD3D").tag("wined3d")
                                     }
-                                    .info("How Mach9 draws DirectX. Metal uses mtld3d for DirectX 9 and DXMT for DirectX 10 and 11, straight to Metal. WineD3D uses Wine's own DirectX through OpenGL: slower, but worth trying if the \(g.noun) draws incorrectly.")
-                                    if g.graphics == .dx11 {
-                                        let tessNeeds: String? = g.settings.useDX9 ? "Turn off Use DirectX 9 first."
-                                            : g.settings.mach9Direct3D == "wined3d" ? "Needs Mach9 renderer set to Metal." : nil
-                                        let learned = g.learnedTessellation ?? AppModel.autoTessellationStart
-                                        Picker(selection: game.settings.maxTessellation) {
-                                            Text("Automatic (\(learned))").tag(0)
-                                            Divider()
-                                            ForEach(AppModel.tessellationLevels, id: \.self) { level in
-                                                Text(level == 1 ? "1 (lowest)" : level == 64 ? "64 (the \(g.noun)'s full detail)" : "\(level)").tag(level)
-                                            }
-                                        } label: {
-                                            settingLabel("Tessellation detail", needs: tessNeeds)
-                                        }
-                                        .disabled(tessNeeds != nil)
-                                        .info("The most extra shape detail (DirectX 11 tessellation) the \(g.noun) gets. Apple's graphics chips can only draw so much detail at once: above that, objects blink, vanish or show only from some angles. Automatic starts at \(AppModel.autoTessellationStart) and, if objects were still skipped, uses less the next time. Higher numbers look smoother up close; 64 is the \(g.noun)'s own maximum and can make objects vanish.")
-                                    }
-                                    if g.arch == .x86 {
-                                        Toggle("Large address aware (4 GB)", isOn: game.settings.fullMemory32)
-                                            .info("Gives this 32-bit \(g.noun) 4 GB of address space instead of 2 GB, preventing out-of-memory crashes. Turn off if the \(g.noun) won't start.")
-                                    }
+                                    .info(c.info("mach9Direct3D"))
                                 }
-                                let dx9Capable = [GraphicsAPI.dx9, .unknown].contains(g.graphics) || g.graphics.hasDX9Fallback
-                                let dx9Needs: String? = [GraphicsAPI.dx9, .unknown].contains(g.drawsWith) ? nil : "Needs Use DirectX 9 on."
-                                if dx9Capable && engine != .mach9 {
-                                    Toggle(isOn: game.settings.dxvkD3D9) { settingLabel("DirectX 9 via DXVK", needs: dx9Needs) }
-                                        .disabled(dx9Needs != nil && !g.settings.dxvkD3D9)
-                                        .info("Renders DirectX 9 through DXVK (Vulkan → Metal) instead of WineD3D. On Mullion, 64-bit programs use MetalSharp's newer DXVK, which runs natively on Apple silicon (needs Mach9 installed for its KosmicKrisp driver); 32-bit games use DXVK 1.10.3, the newest 32-bit build for macOS.")
-                                    let dxvkNeeds: String? = dx9Needs ?? (g.settings.dxvkD3D9 ? nil : "Needs DirectX 9 via DXVK on.")
-                                    if engine == .mullion && g.arch == .x86 {
-                                        let betaNeeds: String? = dxvkNeeds
-                                            ?? (onRosetta ? "Only with CPU translation set to FEX: KosmicKrisp doesn't run through Rosetta 2. DXVK 1.10.3 is used instead."
-                                                : model.betaDXVK32() == nil ? "Optional beta download: install it in Settings ▸ Components ▸ Optional beta downloads."
-                                                : model.runtimes.kosmicKrispDriver() == nil ? "Needs Mach9 installed, for its KosmicKrisp driver." : nil)
-                                        Toggle(isOn: Binding(
-                                            get: { betaNeeds == nil && game.wrappedValue.settings.dxvkBeta },
-                                            set: { if betaNeeds == nil { game.wrappedValue.settings.dxvkBeta = $0 } })) {
-                                            settingLabel("DXVK 3 on KosmicKrisp (beta)", needs: betaNeeds)
+                                if c.applies("maxTessellation") {
+                                    let tessNeeds = c.needs("maxTessellation")
+                                    let learned = g.learnedTessellation ?? AppModel.autoTessellationStart
+                                    Picker(selection: game.settings.maxTessellation) {
+                                        Text("Automatic (\(learned))").tag(0)
+                                        Divider()
+                                        ForEach(AppModel.tessellationLevels, id: \.self) { level in
+                                            Text(level == AppModel.tessellationLevels[0] ? "\(level) (lowest)" : level == 64 ? "64 (the \(g.noun)'s full detail)" : "\(level)").tag(level)
                                         }
-                                        .disabled(betaNeeds != nil)
-                                        .padding(.leading, 18)
-                                        .info("Uses the newest official DXVK (\(model.betaDXVKVersion ?? "3.x")) through KosmicKrisp instead of DXVK 1.10.3 from 2023 through MoltenVK. Experimental: turn it off if the \(g.noun) draws incorrectly or won't start.")
+                                    } label: {
+                                        settingLabel(c.title("maxTessellation"), needs: tessNeeds)
                                     }
+                                    .disabled(tessNeeds != nil)
+                                    .info(c.info("maxTessellation"))
+                                }
+                                if c.applies("fullMemory32") {
+                                    Toggle(c.title("fullMemory32"), isOn: game.settings.fullMemory32)
+                                        .info(c.info("fullMemory32"))
+                                }
+                                if c.applies("dxvkD3D9") {
+                                    Toggle(isOn: game.settings.dxvkD3D9) { settingLabel(c.title("dxvkD3D9"), needs: c.needs("dxvkD3D9")) }
+                                        .disabled(c.needs("dxvkD3D9") != nil && !g.settings.dxvkD3D9)
+                                        .info(c.info("dxvkD3D9"))
+                                }
+                                if c.applies("dxvkBeta") {
+                                    let betaNeeds = c.needs("dxvkBeta")
+                                    Toggle(isOn: Binding(
+                                        get: { betaNeeds == nil && game.wrappedValue.settings.dxvkBeta },
+                                        set: { if betaNeeds == nil { game.wrappedValue.settings.dxvkBeta = $0 } })) {
+                                        settingLabel(c.title("dxvkBeta"), needs: betaNeeds)
+                                    }
+                                    .disabled(betaNeeds != nil)
+                                    .padding(.leading, 18)
+                                    .info(c.info("dxvkBeta"))
+                                }
+                                if c.applies("dxvkVideoMemory") {
                                     Picker(selection: game.settings.dxvkVideoMemory) {
                                         Text(Platform.memoryGB <= 8 ? "Automatic (1 GB on this Mac)" : "Automatic (DXVK's own)").tag(0)
                                         Text("512 MB").tag(512)
@@ -1353,62 +1382,62 @@ struct GameSettingsView: View {
                                         Text("4 GB").tag(4096)
                                         Text("DXVK's own").tag(-1)
                                     } label: {
-                                        settingLabel("Video memory (DXVK)", needs: dxvkNeeds)
+                                        settingLabel(c.title("dxvkVideoMemory"), needs: c.needs("dxvkVideoMemory"))
                                     }
-                                    .disabled(dxvkNeeds != nil)
+                                    .disabled(c.needs("dxvkVideoMemory") != nil)
                                     .padding(.leading, 18)
-                                    .info("How much video memory the \(g.noun) is told it has. On Macs with 8 GB or less, games told they have lots keep every texture loaded until macOS runs out of memory, which makes them stutter or play in slow motion. Raise it if a game hides graphics options or won't start.")
+                                    .info(c.info("dxvkVideoMemory"))
                                 }
-                                if dx9Capable {
+                                if c.applies("drawCopies") {
                                     Picker(selection: game.settings.drawCopies) {
                                         Text(model.drawsCopies(g) ? "Automatic (on)" : "Automatic (off)").tag(Bool?.none)
                                         Text("On").tag(Bool?.some(true))
                                         Text("Off").tag(Bool?.some(false))
                                     } label: {
-                                        settingLabel("Faster screen copies", needs: dx9Needs)
+                                        settingLabel(c.title("drawCopies"), needs: c.needs("drawCopies"))
                                     }
-                                    .disabled(dx9Needs != nil)
-                                    .info("Performs DirectX 9 copies into the frame being drawn as draws, which Apple GPUs handle several times faster. Games with screen effects such as panoramas, blur or glow can make hundreds of these copies per frame. On automatically for DirectX 9 games. Turn it off if a game draws incorrectly or won't start.")
+                                    .disabled(c.needs("drawCopies") != nil)
+                                    .info(c.info("drawCopies"))
                                 }
-                                if g.arch == .x86 {
-                                    Toggle("DirectDraw compatibility (cnc-ddraw)", isOn: Binding(
+                                if c.applies("cncDdraw") {
+                                    Toggle(c.title("cncDdraw"), isOn: Binding(
                                         get: { game.wrappedValue.settings.cncDdraw },
                                         set: { game.wrappedValue.settings.cncDdraw = $0; if $0 { game.wrappedValue.settings.dgVoodoo = false } }))
-                                        .info("Fixes slow, flickering or broken DirectDraw games from the 1990s and 2000s.")
-                                    let dgVoodooReady = model.componentStatus[.dgVoodoo]?.installed ?? false
+                                        .info(c.info("cncDdraw"))
+                                }
+                                if c.applies("dgVoodoo") {
                                     Toggle(isOn: Binding(
                                         get: { game.wrappedValue.settings.dgVoodoo },
                                         set: { game.wrappedValue.settings.dgVoodoo = $0; if $0 { game.wrappedValue.settings.cncDdraw = false } })) {
-                                        settingLabel("Old 3D game fix (dgVoodoo2)", needs: dgVoodooReady ? nil : "Install it in Settings ▸ Components first.")
+                                        settingLabel(c.title("dgVoodoo"), needs: c.needs("dgVoodoo"))
                                     }
-                                    .disabled(!dgVoodooReady && !g.settings.dgVoodoo)
-                                    .info("For 3D games from the late 1990s that use 3dfx Glide or DirectX 1–7, and draw wrong, crash or won't start. dgVoodoo2 draws them through DirectX 11 instead. Experimental under Wine: turn it off if the \(g.noun) gets worse. Turns cnc-ddraw off, since both replace the same file.")
+                                    .disabled(c.needs("dgVoodoo") != nil && !g.settings.dgVoodoo)
+                                    .info(c.info("dgVoodoo"))
                                 }
-                                if g.graphics.hasDX9Fallback && [EngineID.dxvk, .wined3d].contains(engine) {
-                                    let dxmtReady = model.componentStatus[.dxmt]?.installed ?? false
-                                    let dxmtNeeds: String? = g.settings.useDX9 ? "Turn off Use DirectX 9 first."
-                                        : dxmtReady ? nil : "Install DXMT (beta) in Settings ▸ Components first."
-                                    Toggle(isOn: game.settings.dxmtUpstream) { settingLabel("DirectX 10/11 via DXMT (beta)", needs: dxmtNeeds) }
-                                        .disabled(dxmtNeeds != nil && !g.settings.dxmtUpstream)
-                                        .info("Draws DirectX 10 and 11 with the newest official DXMT\(model.upstreamDXMTVersion.map { " (\($0))" } ?? "") straight to Metal, instead of \(engine == .wined3d ? "WineD3D through OpenGL" : "DXVK through Vulkan"). Often much faster. Experimental: turn it off if the \(g.noun) crashes or draws wrong.")
+                                if c.applies("dxmtUpstream") {
+                                    Toggle(isOn: game.settings.dxmtUpstream) { settingLabel(c.title("dxmtUpstream"), needs: c.needs("dxmtUpstream")) }
+                                        .disabled(c.needs("dxmtUpstream") != nil && !g.settings.dxmtUpstream)
+                                        .info(c.info("dxmtUpstream"))
                                 }
-                                if [EngineID.wined3d, .dxvk, .mach9].contains(engine) {
-                                    let wined3dNeeds: String? = engine == .mach9 && g.settings.mach9Direct3D != "wined3d"
-                                        ? "Needs Mach9 renderer set to WineD3D." : nil
+                                if c.applies("wined3dVulkan") {
                                     Picker(selection: game.settings.wined3dVulkan) {
                                         Text("OpenGL (default)").tag(false)
                                         Text("Vulkan").tag(true)
                                     } label: {
-                                        settingLabel("WineD3D renderer", needs: wined3dNeeds)
+                                        settingLabel(c.title("wined3dVulkan"), needs: c.needs("wined3dVulkan"))
                                     }
-                                    .disabled(wined3dNeeds != nil)
-                                    .info("What WineD3D draws DirectX 9 and older with. OpenGL is the most tested on the Mac. Vulkan goes through MoltenVK and can crash some games.")
-                                    Toggle(isOn: game.settings.wined3dSingleThread) { settingLabel("Single-threaded rendering", needs: wined3dNeeds) }
-                                        .disabled(wined3dNeeds != nil)
-                                        .info("Turns off WineD3D's command-stream threading (CSMT). Fixes parts of models lagging a frame behind; slightly slower.")
-                                    Toggle(isOn: game.settings.openGLBackingStore) { settingLabel("OpenGL backing store", needs: wined3dNeeds ?? owner) }
-                                        .disabled(wined3dNeeds != nil || owner != nil)
-                                        .info("Fixes windows that freeze, stay blank or flicker.")
+                                    .disabled(c.needs("wined3dVulkan") != nil)
+                                    .info(c.info("wined3dVulkan"))
+                                }
+                                if c.applies("wined3dSingleThread") {
+                                    Toggle(isOn: game.settings.wined3dSingleThread) { settingLabel(c.title("wined3dSingleThread"), needs: c.needs("wined3dSingleThread")) }
+                                        .disabled(c.needs("wined3dSingleThread") != nil)
+                                        .info(c.info("wined3dSingleThread"))
+                                }
+                                if c.applies("openGLBackingStore") {
+                                    Toggle(isOn: game.settings.openGLBackingStore) { settingLabel(c.title("openGLBackingStore"), needs: c.needs("openGLBackingStore")) }
+                                        .disabled(c.needs("openGLBackingStore") != nil)
+                                        .info(c.info("openGLBackingStore"))
                                 }
                             }
                         } header: {
@@ -1431,8 +1460,6 @@ struct GameSettingsView: View {
                     }
                     if tab == .compatibility {
                         let g = game.wrappedValue
-                        let owner: String? = g.sharedWith == nil ? nil
-                            : "Set in \(model.environmentOwner(of: g).name)'s settings, whose Windows environment this uses."
                         Section("Compatibility") {
                             Picker(selection: game.settings.windowsVersion) {
                                 Text("Windows 11").tag("win11")
@@ -1441,55 +1468,52 @@ struct GameSettingsView: View {
                                 Text("Windows 7").tag("win7")
                                 Text("Windows XP").tag("winxp64")
                             } label: {
-                                settingLabel("Windows version", needs: owner)
+                                settingLabel(c.title("windowsVersion"), needs: c.needs("windowsVersion"))
                             }
-                            .disabled(owner != nil)
-                            .info("The Windows version the \(g.noun) sees. Some older programs refuse to start, or behave differently, on newer versions.")
-                            Picker("Windows language", selection: game.settings.windowsLanguage) {
+                            .disabled(c.needs("windowsVersion") != nil)
+                            .info(c.info("windowsVersion"))
+                            Picker(c.title("windowsLanguage"), selection: game.settings.windowsLanguage) {
                                 Text("Same as this Mac").tag("")
                                 Divider()
                                 ForEach(GameSettings.windowsLanguages, id: \.code) { Text($0.name).tag($0.code) }
                             }
-                            .info("The language and region Windows tells the \(g.noun) it has. Many games made for Japan, China, Korea or Russia show garbled text, crash or won't start unless Windows is set to their language, because they write text in that language's old character set. This changes only what the \(g.noun) sees, not the \(g.noun)'s own language setting.")
-                            Toggle(isOn: game.settings.commandIsCtrl) { settingLabel("⌘ Command as Ctrl", needs: owner) }
-                                .disabled(owner != nil)
-                                .info("Command works as Ctrl in the \(g.noun), so ⌘C and ⌘S act as Ctrl+C and Ctrl+S.")
-                            Toggle(isOn: game.settings.optionIsAlt) { settingLabel("⌥ Option as Alt", needs: owner) }
-                                .disabled(owner != nil)
-                                .info("Option works as Alt in the \(g.noun), for shortcuts such as Alt+Enter.")
-                            Toggle(isOn: game.settings.captureFullscreen) { settingLabel("Exclusive full-screen mode", needs: owner) }
-                                .disabled(owner != nil)
-                                .info("Lets the \(g.noun) change the display's resolution. When off, full screen is virtual: it's scaled to fit the display.")
-                            if owner == nil && g.settings.captureFullscreen && g.graphics == .unknown {
+                            .info(c.info("windowsLanguage"))
+                            Toggle(isOn: game.settings.commandIsCtrl) { settingLabel(c.title("commandIsCtrl"), needs: c.needs("commandIsCtrl")) }
+                                .disabled(c.needs("commandIsCtrl") != nil)
+                                .info(c.info("commandIsCtrl"))
+                            Toggle(isOn: game.settings.optionIsAlt) { settingLabel(c.title("optionIsAlt"), needs: c.needs("optionIsAlt")) }
+                                .disabled(c.needs("optionIsAlt") != nil)
+                                .info(c.info("optionIsAlt"))
+                            Toggle(isOn: game.settings.captureFullscreen) { settingLabel(c.title("captureFullscreen"), needs: c.needs("captureFullscreen")) }
+                                .disabled(c.needs("captureFullscreen") != nil)
+                                .info(c.info("captureFullscreen"))
+                            if c.sharedEnvironmentOwner == nil && g.settings.captureFullscreen && g.graphics == .unknown {
                                 Text("Meant for games. In an app like this one, a maximized window can trap the mouse and stop resizing, so it's best left off.")
                                     .font(.caption).foregroundStyle(.orange)
                             }
-                            Toggle("Fast synchronization (MSync)", isOn: game.settings.fastSync)
-                                .info("Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible.")
-                            Toggle("Advertise AVX (Rosetta)", isOn: game.settings.advertiseAVX)
-                                .info("Reports AVX support to programs that require it. Applies to engines that run through Rosetta.")
-                            if g.arch == .x86 {
-                                let legacyReady = model.componentStatus[.legacyDirectX]?.installed ?? false
-                                let legacyNeeds: String? = legacyReady ? nil : "Install DirectMusic and DirectPlay in Settings ▸ Components first."
-                                Toggle(isOn: game.settings.nativeDirectMusic) { settingLabel("Microsoft's DirectMusic", needs: legacyNeeds) }
-                                    .disabled(!legacyReady && !g.settings.nativeDirectMusic)
-                                    .info("Plays the \(g.noun)'s music with Microsoft's DirectMusic instead of Wine's, which is incomplete. Try it if a game from around 1998–2005 has no music, or crashes when music starts. Turn it off if sound gets worse.")
-                                Toggle(isOn: game.settings.nativeDirectPlay) { settingLabel("Microsoft's DirectPlay", needs: legacyNeeds) }
-                                    .disabled(!legacyReady && !g.settings.nativeDirectPlay)
-                                    .info("Uses Microsoft's DirectPlay instead of Wine's for the \(g.noun)'s LAN or online multiplayer. Try it if an older game's multiplayer menu fails, crashes or finds no games.")
+                            Toggle(c.title("fastSync"), isOn: game.settings.fastSync)
+                                .info(c.info("fastSync"))
+                            Toggle(c.title("advertiseAVX"), isOn: game.settings.advertiseAVX)
+                                .info(c.info("advertiseAVX"))
+                            if c.applies("nativeDirectMusic") {
+                                Toggle(isOn: game.settings.nativeDirectMusic) { settingLabel(c.title("nativeDirectMusic"), needs: c.needs("nativeDirectMusic")) }
+                                    .disabled(c.needs("nativeDirectMusic") != nil && !g.settings.nativeDirectMusic)
+                                    .info(c.info("nativeDirectMusic"))
                             }
-                            Toggle("Show on Discord", isOn: game.settings.showOnDiscord)
-                                .info("Shows this \(g.noun) on your Discord profile while it runs.")
+                            if c.applies("nativeDirectPlay") {
+                                Toggle(isOn: game.settings.nativeDirectPlay) { settingLabel(c.title("nativeDirectPlay"), needs: c.needs("nativeDirectPlay")) }
+                                    .disabled(c.needs("nativeDirectPlay") != nil && !g.settings.nativeDirectPlay)
+                                    .info(c.info("nativeDirectPlay"))
+                            }
+                            Toggle(c.title("showOnDiscord"), isOn: game.settings.showOnDiscord)
+                                .info(c.info("showOnDiscord"))
                             ArgsEditor(text: game.settings.arguments)
                                 .id("args-\(gameID)")
                             EnvEditor(text: game.settings.extraEnv)
                                 .id(gameID)
-                            Toggle(isOn: game.settings.webView2) {
-                                Text("WebView2 for launchers").foregroundStyle(model.webView2Installed ? .primary : .tertiary)
-                                if !model.webView2Installed { Text("Install WebView2 in Settings ▸ Components first.") }
-                            }
-                                .disabled(!model.webView2Installed)
-                                .info("For launchers whose window or login page is blank. Lets them show built-in web pages with Microsoft's WebView2, installed once in Settings ▸ Components and shared between games and apps. It doesn't work for every launcher under Wine.")
+                            Toggle(isOn: game.settings.webView2) { settingLabel(c.title("webView2"), needs: c.needs("webView2")) }
+                                .disabled(c.needs("webView2") != nil)
+                                .info(c.info("webView2"))
                         }
                     }
                     if tab == .tools {
@@ -1506,7 +1530,7 @@ struct GameSettingsView: View {
                         Section("Fix Problems") {
                             HStack {
                                 Button("Troubleshoot…") {
-                                    if let draft { model.saveSettings(draft) }
+                                    if let draft { model.saveSettings(draft, openedAs: opened) }
                                     dismiss()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.troubleshootGame = gameID }
                                 }
@@ -1555,7 +1579,7 @@ struct GameSettingsView: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save") {
-                    if let draft { model.saveSettings(draft) }
+                    if let draft { model.saveSettings(draft, openedAs: opened) }
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -1565,8 +1589,24 @@ struct GameSettingsView: View {
         .frame(minWidth: 560, idealWidth: 620, minHeight: 560, idealHeight: 720)
         .onAppear {
             draft = model.game(gameID)
+            opened = draft
             if let d = draft, d.rovSeen && !d.settings.hideROV { showAdvanced = true }
         }
+        .onChange(of: model.assistantChangeRevision) {
+            guard let live = model.game(gameID), let o = opened, let d = draft else { return }
+            draft = AssistantEdits.merged(live: live, original: o, edited: d)
+            opened = live
+        }
+        .onChange(of: model.assistantHandoff?.id, initial: true) {
+            guard let h = model.assistantHandoff, !h.taken, h.game == gameID, case .removeGame = h.ask else { return }
+            h.taken = true
+            removeHandoff = h
+            confirmRemove = true
+        }
+        .onChange(of: confirmRemove) {
+            if !confirmRemove { removeHandoff?.finish("closed"); removeHandoff = nil }
+        }
+        .onDisappear { removeHandoff?.finish("closed") }
         .confirmationDialog("Remove \(draft?.name ?? "this program") from Ferry?", isPresented: $confirmRemove) {
             if draft?.sharedWith != nil {
                 Button("Remove") {
@@ -1591,11 +1631,12 @@ struct GameSettingsView: View {
 
     private var removeMessage: String {
         guard let g = draft else { return "" }
+        let asked = removeHandoff != nil ? "The assistant asked to remove \(g.name). " : ""
         if g.sharedWith != nil {
-            return "Only the Ferry entry goes away. \(model.environmentOwner(of: g).name)'s Windows environment, and the \(g.noun) inside it, stay."
+            return asked + "Only the Ferry entry goes away. \(model.environmentOwner(of: g).name)'s Windows environment, and the \(g.noun) inside it, stay."
         }
         let sharing = model.sharers(of: g.id).count
-        var text = "The \(g.noun)'s own files on your Mac are never touched."
+        var text = asked + "The \(g.noun)'s own files on your Mac are never touched."
         if sharing > 0 {
             text += " The \(sharing) program\(sharing == 1 ? "" : "s") added to its environment will be removed from Ferry too."
         }
@@ -1615,6 +1656,7 @@ struct SettingsView: View {
             NewGameSettings().tabItem { Label("New Games", systemImage: "plus.app") }.tag("newGames")
             SystemSettings().tabItem { Label("System", systemImage: "lock.shield") }.tag("system")
             StorageView(showsDone: false).tabItem { Label("Storage", systemImage: "internaldrive") }.tag("storage")
+            AISettingsView().tabItem { Label("AI", systemImage: "sparkles") }.tag("ai")
         }
         .frame(minWidth: 620, idealWidth: 660, minHeight: 560, idealHeight: 640)
     }
@@ -1993,7 +2035,7 @@ struct ArgsEditor: View {
     }
 
     var body: some View {
-        LabeledContent("Launch arguments") {
+        LabeledContent(SettingsCatalog.entry("arguments")!.title) {
             VStack(alignment: .trailing, spacing: 6) {
                 ForEach($rows) { $row in
                     HStack(spacing: 4) {
@@ -2013,7 +2055,7 @@ struct ArgsEditor: View {
                 .buttonStyle(.borderless)
             }
         }
-        .help("Extra options passed to the program when it starts, such as -windowed or -skipintro. Which ones work depends on the program.")
+        .help(SettingsCatalog.entry("arguments")!.info)
         .onAppear { rows = ArgsText.options(text).map { Row(value: $0) } }
         .onChange(of: rows) {
             text = rows.map { $0.value.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
@@ -2032,7 +2074,7 @@ struct EnvEditor: View {
     }
 
     var body: some View {
-        LabeledContent("Environment variables") {
+        LabeledContent(SettingsCatalog.entry("extraEnv")!.title) {
             VStack(alignment: .trailing, spacing: 6) {
                 ForEach(rows) { row in
                     HStack(spacing: 4) {
@@ -2056,7 +2098,7 @@ struct EnvEditor: View {
                 .buttonStyle(.borderless)
             }
         }
-        .help("Settings passed to Wine and its graphics layers when the program starts, written as NAME = value. For troubleshooting; most programs need none.")
+        .help(SettingsCatalog.entry("extraEnv")!.info)
         .onAppear { load(text) }
     }
 

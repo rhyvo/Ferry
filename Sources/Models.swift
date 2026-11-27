@@ -217,7 +217,7 @@ extension GameSettings {
         mullionVulkan = (try? c.decodeIfPresent(String.self, forKey: .mullionVulkan)) ?? d.mullionVulkan
         mullionRosetta = (try? c.decodeIfPresent(Bool.self, forKey: .mullionRosetta)) ?? d.mullionRosetta
         mach9Direct3D = (try? c.decodeIfPresent(String.self, forKey: .mach9Direct3D)) ?? d.mach9Direct3D
-        maxTessellation = (try? c.decodeIfPresent(Int.self, forKey: .maxTessellation)) ?? d.maxTessellation
+        maxTessellation = (try? c.decodeIfPresent(Int.self, forKey: .maxTessellation)).flatMap { $0 }.map { $0 > 0 ? max(4, $0) : 0 } ?? d.maxTessellation
         useDX9 = (try? c.decodeIfPresent(Bool.self, forKey: .useDX9)) ?? d.useDX9
         fullMemory32 = (try? c.decodeIfPresent(Bool.self, forKey: .fullMemory32)) ?? d.fullMemory32
         macFullScreenButton = (try? c.decodeIfPresent(Bool.self, forKey: .macFullScreenButton)) ?? d.macFullScreenButton
@@ -238,6 +238,19 @@ extension GameSettings {
         showOnDiscord = (try? c.decodeIfPresent(Bool.self, forKey: .showOnDiscord)) ?? d.showOnDiscord
         webView2 = (try? c.decodeIfPresent(Bool.self, forKey: .webView2)) ?? d.webView2
         nativeXAudio2 = (try? c.decodeIfPresent(Bool.self, forKey: .nativeXAudio2)) ?? d.nativeXAudio2
+    }
+}
+
+enum IconMode: String, Codable, CaseIterable, Identifiable {
+    case auto, custom, standard
+    var id: String { rawValue }
+
+    func title(_ noun: String) -> String {
+        switch self {
+        case .auto: return "From \(noun) files"
+        case .custom: return "Custom image"
+        case .standard: return "Default"
+        }
     }
 }
 
@@ -294,7 +307,7 @@ extension Game {
         rovSeen = (try? c.decodeIfPresent(Bool.self, forKey: .rovSeen)) ?? false
         rovWatchLaunches = (try? c.decodeIfPresent(Int.self, forKey: .rovWatchLaunches)) ?? 0
         stallPrompted = (try? c.decodeIfPresent(Bool.self, forKey: .stallPrompted)) ?? false
-        learnedTessellation = try? c.decodeIfPresent(Int.self, forKey: .learnedTessellation)
+        learnedTessellation = (try? c.decodeIfPresent(Int.self, forKey: .learnedTessellation)).flatMap { $0 }.map { max(4, $0) }
         iconMode = (try? c.decodeIfPresent(IconMode.self, forKey: .iconMode)) ?? .auto
         framework = try? c.decodeIfPresent(String.self, forKey: .framework)
         mods = (try? c.decodeIfPresent(LossyList<InstalledMod>.self, forKey: .mods))?.items ?? []

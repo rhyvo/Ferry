@@ -11,14 +11,25 @@ APP="build/Ferry.app"
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
+FLAGS=()
+if [[ "${FERRY_RELEASE:-}" == "1" ]]; then FLAGS=(-D FERRY_RELEASE); fi
+
 echo "Compiling…"
-xcrun swiftc -O -swift-version 5 -parse-as-library \
+xcrun swiftc -O -swift-version 5 -parse-as-library ${FLAGS[@]+"${FLAGS[@]}"} \
   -target arm64-apple-macos14.0 \
   -framework SwiftUI -framework AppKit -framework GameController \
+  -Xlinker -weak_framework -Xlinker FoundationModels \
   Sources/*.swift \
   -o "$APP/Contents/MacOS/Ferry"
+xcrun swiftc -O -swift-version 5 ${FLAGS[@]+"${FLAGS[@]}"} \
+  -target arm64-apple-macos14.0 \
+  -Xlinker -weak_framework -Xlinker FoundationModels \
+  Helpers/ferry-mcp/main.swift Sources/MCPProtocol.swift Sources/AssistantWire.swift \
+  -o "$APP/Contents/MacOS/ferry-mcp"
 
 cp Info.plist "$APP/Contents/Info.plist"
+rm -rf "$APP/Contents/Resources/Knowledge"
+cp -R Knowledge "$APP/Contents/Resources/Knowledge"
 cp Resources/ferry-winbuttons.exe "$APP/Contents/Resources/"
 cp Resources/d3d12-hide-rov.dll "$APP/Contents/Resources/"
 cp Resources/d3d9-ferry-x86.dll Resources/d3d9-ferry-x64.dll "$APP/Contents/Resources/"
@@ -41,7 +52,7 @@ rm -rf "$ICONSET"
 IDENTITY="Ferry Local Signing"
 if [[ "${FERRY_RELEASE:-}" == "1" ]]; then
   echo "Signing (ad-hoc, for release)…"
-  strip -x "$APP/Contents/MacOS/Ferry"
+  strip -x "$APP/Contents/MacOS/Ferry" "$APP/Contents/MacOS/ferry-mcp"
   codesign --force --deep --sign - "$APP"
 elif security find-certificate -c "$IDENTITY" >/dev/null 2>&1; then
   echo "Signing with \"$IDENTITY\"…"
