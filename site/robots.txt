@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rhyvo.github.io/Ferry/sitemap.xml

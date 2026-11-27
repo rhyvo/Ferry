@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferry: play Windows games on your Mac for free (Apple silicon)</title>
+<meta name="description" content="Ferry is a free Mac app that runs Windows games on Apple silicon. A CrossOver and Whisky alternative: D3DMetal, Wine, Mullion and Mach9, picked per game, with Steam and an AI assistant.">
+<link rel="canonical" href="https://rhyvo.github.io/Ferry/">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#16244f">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ferry">
+<meta property="og:title" content="Ferry: Windows games on your Mac, made simple">
+<meta property="og:description" content="Free Mac app for Windows games on Apple silicon. Drop in a game and press Play.">
+<meta property="og:url" content="https://rhyvo.github.io/Ferry/">
+<meta property="og:image" content="https://rhyvo.github.io/Ferry/banner.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://rhyvo.github.io/Ferry/banner.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Ferry",
+  "operatingSystem": "macOS 14 or later",
+  "applicationCategory": "GameApplication",
+  "description": "Runs Windows games and programs on Apple silicon Macs. Picks D3DMetal, Wine, Mullion or Mach9 per game and installs what each game needs.",
+  "url": "https://rhyvo.github.io/Ferry/",
+  "downloadUrl": "https://github.com/rhyvo/Ferry/releases/latest",
+  "image": "https://rhyvo.github.io/Ferry/icon.png",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  :root {
+    --night: #0c1433;
+    --navy: #16244f;
+    --teal: #157590;
+    --sea: #2496b3;
+    --foam: #dff4fa;
+    --text: #edf6f9;
+    --muted: #9fbfcc;
+    --line: rgba(223, 244, 250, 0.13);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--night); color: var(--text);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: #8ad9ec; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; display: block; }
+  code { font: 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--foam); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+  .label { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #6fd0e6; margin: 0 0 12px; }
+  h2 { font-size: clamp(30px, 4.2vw, 46px); line-height: 1.1; letter-spacing: -0.025em; margin: 0 0 16px; }
+  h3 { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 8px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+
+  nav { position: sticky; top: 0; z-index: 10; background: rgba(12, 20, 51, 0.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 26px; height: 58px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 750; font-size: 18px; }
+  .brand:hover { text-decoration: none; }
+  .brand img { width: 28px; height: 28px; border-radius: 22.5%; }
+  .links { display: flex; gap: 24px; margin-left: auto; font-size: 15px; }
+  .links a { color: var(--muted); }
+  .links a:hover { color: var(--text); text-decoration: none; }
+  .nav-dl { background: #fff; color: var(--navy); font-weight: 700; font-size: 14px; border-radius: 7px; padding: 5px 13px; }
+  .nav-dl:hover { text-decoration: none; opacity: 0.9; }
+
+  .hero { position: relative; overflow: hidden; background: linear-gradient(170deg, #1d2659 0%, #1a467a 52%, #15809a 100%); }
+  .hero .wrap { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 1.08fr; gap: 54px; align-items: center; padding-top: 76px; padding-bottom: 210px; }
+  .hello { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+  .hello img { width: 64px; height: 64px; border-radius: 22.5%; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3); animation: bob 5s ease-in-out infinite; }
+  .hello span { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; }
+  @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }
+  .hero h1 { font-size: clamp(38px, 5.4vw, 62px); line-height: 1.04; letter-spacing: -0.035em; margin: 0 0 20px; }
+  .hero .intro { font-size: 19px; color: #d3ebf2; max-width: 30em; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 28px 0 14px; }
+  .btn { display: inline-flex; align-items: center; padding: 12px 22px; border-radius: 10px; font-weight: 700; font-size: 17px; transition: transform 0.15s ease; }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: #fff; color: var(--navy); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); }
+  .btn.ghost { color: #fff; border: 1.5px solid rgba(255, 255, 255, 0.5); }
+  .btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
+  .meta { font-size: 14px; color: #bfe0ea; }
+  .shot { border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 30px 70px rgba(5, 12, 40, 0.5); background: #14708a; }
+  .shot img { width: 100%; height: auto; }
+
+  .waves { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; z-index: 1; }
+  .waves svg { position: absolute; bottom: 0; width: 200%; height: 100%; }
+  .waves .a { animation: drift 26s linear infinite; }
+  .waves .b { animation: drift 19s linear infinite reverse; }
+  .waves .c { animation: drift 31s linear infinite; }
+  .waves .d { animation: drift 23s linear infinite reverse; }
+  @keyframes drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .waves svg, .hello img { animation: none; } }
+
+  .videos { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 30px; }
+  .video { color: var(--text); }
+  .video:hover { text-decoration: none; }
+  .video .thumb { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+  .video img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; transition: transform 0.4s ease; }
+  .video:hover img { transform: scale(1.03); }
+  .video .play { position: absolute; inset: 0; display: grid; place-items: center; }
+  .video .play b { width: 64px; height: 64px; border-radius: 50%; background: rgba(12, 20, 51, 0.72); border: 1.5px solid rgba(255, 255, 255, 0.6); display: grid; place-items: center; font-size: 22px; padding-left: 4px; }
+  .video h3 { margin: 14px 0 2px; font-size: 19px; }
+  .video p { color: var(--muted); font-size: 15px; margin: 0; }
+
+  .story { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 64px; align-items: center; padding: 64px 0; border-top: 1px solid var(--line); }
+  .story:nth-of-type(even) .copy { order: 2; }
+  .story ul { margin: 6px 0 0; padding: 0; list-style: none; }
+  .story li { padding-left: 22px; position: relative; color: var(--muted); margin: 6px 0; }
+  .story li::before { content: ""; position: absolute; left: 0; top: 0.72em; width: 10px; height: 2px; background: var(--sea); }
+
+  .section { padding-top: 110px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 0 56px; }
+  .plain { margin: 0; padding: 0; list-style: none; }
+  .plain li { padding: 16px 0; border-top: 1px solid var(--line); }
+  .plain li b { display: block; margin-bottom: 2px; }
+  .plain li span { color: var(--muted); }
+
+  .ai { background: linear-gradient(180deg, rgba(36, 150, 179, 0.14), rgba(36, 150, 179, 0)); border: 1px solid var(--line); border-radius: 24px; padding: 48px; }
+  .ai-bar { display: flex; align-items: center; gap: 10px; background: #262b30; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; padding: 10px 12px; margin: 26px 0 34px; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35); }
+  .ai-bar .spark { color: #a9b4ff; font-size: 17px; }
+  .ai-bar .menu { background: #323840; border: 1px solid #444b53; border-radius: 7px; padding: 4px 10px; font-size: 14px; white-space: nowrap; }
+  .ai-bar .field { flex: 1; min-width: 0; background: #1b1f23; border: 1px solid #3a3f45; border-radius: 16px; padding: 6px 13px; color: #8b97a0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ai-bar .up { color: #b8c0c8; }
+  .ai .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
+  .ai .cols h3 { font-size: 18px; }
+  .ai .cols p { color: var(--muted); font-size: 16px; margin: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align: left; padding: 15px 14px 15px 0; border-top: 1px solid var(--line); font-size: 16px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; border-top: none; }
+  td b { color: #8ad9ec; }
+
+  .faq { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 56px; margin-top: 20px; }
+  .faq div { padding: 18px 0; border-top: 1px solid var(--line); }
+  .faq h3 { font-size: 18px; margin-bottom: 6px; }
+  .faq p { color: var(--muted); margin: 0; font-size: 16px; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  ol.steps li { counter-increment: s; color: var(--muted); font-size: 16px; }
+  ol.steps li b { color: var(--text); }
+  ol.steps li::before { content: counter(s); display: block; font-size: 44px; font-weight: 800; letter-spacing: -0.04em; color: var(--sea); line-height: 1; margin-bottom: 10px; }
+
+  .tail { position: relative; overflow: hidden; margin-top: 120px; background: linear-gradient(180deg, var(--night) 0%, #14335f 45%, #157590 100%); padding: 150px 0 80px; text-align: center; }
+  .tail .wrap { position: relative; z-index: 2; }
+  .tail p { color: #d3ebf2; max-width: 36em; margin: 0 auto 26px; }
+  .tail .cta { justify-content: center; }
+  .kofi { background: #ff5e5b; color: #fff; }
+  footer { background: #0a1029; color: var(--muted); font-size: 14px; padding: 36px 0 48px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  footer a { color: #bfe0ea; }
+  footer .links2 a { margin-right: 18px; }
+
+  @media (max-width: 900px) {
+    .links { display: none; } .nav-dl { margin-left: auto; }
+    .hero .wrap { grid-template-columns: 1fr; gap: 40px; padding-top: 48px; padding-bottom: 190px; }
+    .story, .split, .faq, .videos { grid-template-columns: 1fr; gap: 28px; }
+    .story:nth-of-type(even) .copy { order: 0; }
+    .ai { padding: 28px 22px; } .ai .cols { grid-template-columns: 1fr; gap: 22px; }
+    ol.steps { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 20px; }
+    ol.steps { grid-template-columns: 1fr; }
+    th, td { font-size: 14px; padding-right: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="">Ferry</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#assistant">AI assistant</a>
+      <a href="#engines">How it works</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/rhyvo/Ferry">GitHub</a>
+    </div>
+    <a class="nav-dl" href="https://github.com/rhyvo/Ferry/releases/latest">Download</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <div class="hello"><img src="icon.png" alt="Ferry's icon: a ferry carrying Windows panes across the sea" width="64" height="64"><span>Ferry</span></div>
+      <h1>Windows games on your Mac, made simple.</h1>
+      <p class="intro">Drop in a game, or install Steam, and press Play. Ferry reads the game, picks the best way to run it on Apple silicon, and installs what it needs. Free, and no Windows licence.</p>
+      <div class="cta">
+        <a class="btn primary" id="download" href="https://github.com/rhyvo/Ferry/releases/latest">Download for Mac</a>
+        <a class="btn ghost" href="#watch">Watch it run</a>
+      </div>
+      <div class="meta"><span id="version">Latest version</span> · macOS 14 or later · M1 or later</div>
+    </div>
+    <div class="shot"><img src="ferry-demo.gif" alt="Ferry's library, Compatibility Check, game settings, Troubleshoot, mods, controller mapping, Task Manager and settings" width="1440" height="900"></div>
+  </div>
+  <div class="waves" aria-hidden="true">
+    <svg class="a" viewBox="0 0 2880 190" preserveAspectRatio="none"><path fill="#2a93b2" fill-opacity="0.6" d="M0 62 C240 28 480 28 720 62 S1200 96 1440 62 S1920 28 2160 62 S2640 96 2880 62 V190 H0Z"/></svg>
+    <svg class="b" viewBox="0 0 2880 190" preserveAspectRatio="none"><path fill="#1d7499" d="M0 92 C240 62 480 62 720 92 S1200 122 1440 92 S1920 62 2160 92 S2640 122 2880 92 V190 H0Z"/><path fill="none" stroke="#dff4fa" stroke-width="3" stroke-opacity="0.75" d="M0 92 C240 62 480 62 720 92 S1200 122 1440 92 S1920 62 2160 92 S2640 122 2880 92"/></svg>
+    <svg class="c" viewBox="0 0 2880 190" preserveAspectRatio="none"><path fill="#164a76" d="M0 124 C240 100 480 100 720 124 S1200 148 1440 124 S1920 100 2160 124 S2640 148 2880 124 V190 H0Z"/></svg>
+    <svg class="d" viewBox="0 0 2880 190" preserveAspectRatio="none"><path fill="#0c1433" d="M0 154 C240 136 480 136 720 154 S1200 172 1440 154 S1920 136 2160 154 S2640 172 2880 154 V190 H0Z"/></svg>
+  </div>
+</header>
+
+<main>
+<section class="wrap section" id="watch" style="padding-top: 70px">
+  <p class="label">See it next to CrossOver</p>
+  <h2>Same Mac. Same game. Different result.</h2>
+  <div class="videos">
+    <a class="video" href="https://www.youtube.com/watch?v=izmT_m8RGXM">
+      <div class="thumb"><img src="https://i.ytimg.com/vi/izmT_m8RGXM/maxresdefault.jpg" alt="BioShock on Mac: CrossOver crashed, Ferry runs it at 60 FPS" loading="lazy"><span class="play"><b>▶</b></span></div>
+      <h3>BioShock on Mac</h3>
+      <p>CrossOver crashed. Ferry runs it at 60 FPS.</p>
+    </a>
+    <a class="video" href="https://www.youtube.com/watch?v=YwlEyGBTF3o">
+      <div class="thumb"><img src="https://i.ytimg.com/vi/YwlEyGBTF3o/maxresdefault.jpg" alt="Ferry vs CrossOver: Call of Duty: Modern Warfare 2 on Mac, 60 FPS vs 12 FPS" loading="lazy"><span class="play"><b>▶</b></span></div>
+      <h3>Call of Duty: Modern Warfare 2 on Mac</h3>
+      <p>60 FPS in Ferry, 12 FPS in CrossOver, same settings.</p>
+    </a>
+  </div>
+  <p class="muted" style="margin-top:22px;font-size:15px">More on the <a href="https://www.youtube.com/@rhyvo_ferry">Rhyvo YouTube channel</a>.</p>
+</section>
+
+<section class="wrap section" id="features">
+  <article class="story">
+    <div class="copy">
+      <p class="label">Know before you play</p>
+      <h2>Ferry reads the game first.</h2>
+      <p class="muted">Before anything runs, Ferry checks whether a game is 32- or 64-bit, which graphics it uses, what it needs and what might block it, then picks the engine that suits it.</p>
+      <ul><li>Drop in <code>.exe</code>, <code>.msi</code> or <code>.bat</code> files, folders, or <code>.zip</code>, <code>.rar</code> and <code>.7z</code> archives</li><li>Finds the real game among several programs</li><li>Visual C++, DirectX, .NET, XNA, PhysX and codecs installed once, for every game</li></ul>
+    </div>
+    <div class="shot"><img src="img/compatibility.jpg" alt="Ferry's Compatibility Check for a game" width="1200" height="627" loading="lazy"></div>
+  </article>
+  <article class="story">
+    <div class="copy">
+      <p class="label">Fix a game with a switch</p>
+      <h2>Every setting explained.</h2>
+      <p class="muted">Engine, MetalFX upscaling, Retina, frame rate limit, VSync, Use DirectX 9 and more, each with an ⓘ that says what it does. Options that wait on another setting say what they need.</p>
+      <ul><li>Per-game settings, kept apart from every other game</li><li>Save backups, launch arguments, ⌘ as Ctrl</li></ul>
+    </div>
+    <div class="shot"><img src="img/settings.jpg" alt="A game's settings in Ferry" width="1200" height="627" loading="lazy"></div>
+  </article>
+  <article class="story">
+    <div class="copy">
+      <p class="label">Something wrong?</p>
+      <h2>Pick what you see.</h2>
+      <p class="muted">Black screen, stutter, crackling sound, a crash: Troubleshoot walks you through the fixes for that problem, one at a time, and reads the game's log for errors it recognises.</p>
+      <ul><li>Fixes tuned to each game's engine</li><li>Report a Bug… with the details filled in</li></ul>
+    </div>
+    <div class="shot"><img src="img/troubleshoot.jpg" alt="Troubleshoot in Ferry, listing problems to pick from" width="1200" height="627" loading="lazy"></div>
+  </article>
+  <article class="story">
+    <div class="copy">
+      <p class="label">Mods and fixes</p>
+      <h2>Found for you.</h2>
+      <p class="muted">Ferry searches PCGamingWiki and GitHub for a game's fixes and mods, installs them, and removes them again cleanly with the original files put back.</p>
+    </div>
+    <div class="shot"><img src="img/mods.jpg" alt="Mods for a game in Ferry" width="1200" height="627" loading="lazy"></div>
+  </article>
+  <article class="story">
+    <div class="copy">
+      <p class="label">Play with a controller</p>
+      <h2>Any pad, any game.</h2>
+      <p class="muted">Xbox and PlayStation controllers work automatically. For games that only know a keyboard, map the buttons to keys and the stick to the mouse.</p>
+    </div>
+    <div class="shot"><img src="img/controller.jpg" alt="Ferry's controller mapping window" width="1200" height="627" loading="lazy"></div>
+  </article>
+
+  <div class="split" style="padding-top:40px">
+    <ul class="plain">
+      <li><b>One-click Steam</b><span>Installs Steam for Windows and adds its games to your library.</span></li>
+      <li><b>Faster DirectX 9</b><span>Ferry's own fix makes games that copy the screen a lot several times faster.</span></li>
+      <li><b>Kept up to date</b><span>Engines update from their own projects with one click, D3DMetal 4 (beta) included.</span></li>
+    </ul>
+    <ul class="plain">
+      <li><b>Task Manager</b><span>Every Windows program that's running, with memory, CPU and GPU, and a way to end stuck ones.</span></li>
+      <li><b>Storage</b><span>See what Ferry keeps on disk and clear out old environments in one click.</span></li>
+      <li><b>Discord</b><span>Shows what you're playing.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap section" id="assistant">
+  <div class="ai">
+    <p class="label">New in 1.3</p>
+    <h2>Ask why a game won't run.</h2>
+    <p class="muted" style="max-width:40em">An assistant lives at the bottom of Ferry's window. Type what's wrong in plain words, and it explains it and helps fix it.</p>
+    <div class="ai-bar" aria-hidden="true"><span class="spark">✦</span><span class="menu">No game ⌄</span><span class="field">Ask the assistant about a game…</span><span class="up">⌃</span></div>
+    <div class="cols">
+      <div><h3>Free on your Mac</h3><p>Apple's model runs on your Mac and sends nothing out. It offers Ferry's own fixes as buttons; nothing changes until you press one.</p></div>
+      <div><h3>Or your own key</h3><p>With Claude, ChatGPT or Gemini it reads logs and settings itself, changes settings and tests games, asking first, with Undo on every change.</p></div>
+      <div><h3>Other AI apps too</h3><p>Let Claude Code or Claude Desktop use Ferry, and add MCP servers for more tools, in Settings ▸ AI.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap section" id="engines">
+  <div class="split">
+    <div>
+      <p class="label">How it works</p>
+      <h2>Four engines. Ferry picks one.</h2>
+      <p class="muted">Ferry reads each program without running it. If a game closes right after starting, it shows why and offers the next engine to try. You can always pick one yourself.</p>
+    </div>
+    <table>
+      <tr><th>Game</th><th>Engine</th></tr>
+      <tr><td>64-bit DirectX 11 / 12</td><td><b>D3DMetal</b><br><span class="muted">Apple's own translator, straight to Metal</span></td></tr>
+      <tr><td>DirectX 9, 10, 32-bit DirectX 11, Vulkan</td><td><b>Mach9</b><br><span class="muted">Straight to Metal, no Rosetta</span></td></tr>
+      <tr><td>OpenGL and Clickteam games</td><td><b>Mullion</b><br><span class="muted">DirectX and OpenGL 4.6 to Metal, no Rosetta</span></td></tr>
+      <tr><td>Installers and older 32-bit games</td><td><b>Wine Staging</b><br><span class="muted">WineD3D or DXVK</span></td></tr>
+    </table>
+  </div>
+  <p class="muted" style="margin-top:34px;font-size:16px"><b style="color:var(--text)">What can't run:</b> games with kernel anti-cheat (Valorant, Fortnite and most competitive shooters), Windows drivers, 16-bit programs and Microsoft Store packages. The Compatibility Check tells you before you add a game.</p>
+</section>
+
+<section class="wrap section" id="faq">
+  <p class="label">Questions</p>
+  <h2>Good to know.</h2>
+  <div class="faq">
+    <div><h3>How do I play Windows games on a Mac?</h3><p>Download Ferry, drag the game's <code>.exe</code>, folder or archive onto its window (or install Steam from Ferry), and press Play. Ferry picks the engine and installs what the game needs.</p></div>
+    <div><h3>Is Ferry a free alternative to CrossOver or Whisky?</h3><p>Yes. Like them it runs Windows games through Wine and Apple's D3DMetal, but it's free, picks the engine and settings per game for you, and keeps its engines up to date with one click.</p></div>
+    <div><h3>Does it work with Steam games?</h3><p>Yes. Ferry installs Steam for Windows in one click and lets you add its games to your library. Games with kernel anti-cheat can't run on any Mac translation layer.</p></div>
+    <div><h3>Is it really free?</h3><p>Yes. Ferry costs nothing, and so do all the engines and libraries it downloads.</p></div>
+    <div><h3>Do I need to know about Wine?</h3><p>No. That's the point of Ferry. If you do, every engine and setting is there for you to change.</p></div>
+    <div><h3>Where are my games and saves?</h3><p>Games run from wherever you keep them. Each game's saves are kept apart from its environments, so switching engines never loses them.</p></div>
+  </div>
+</section>
+
+<section class="wrap section" id="install">
+  <p class="label">Install</p>
+  <h2>Four steps, once.</h2>
+  <ol class="steps">
+    <li><b><a href="https://github.com/rhyvo/Ferry/releases/latest">Download Ferry</a></b> (the <code>.dmg</code> file) and open it.</li>
+    <li>Drag <b>Ferry</b> into <b>Applications</b>.</li>
+    <li>macOS blocks it the first time: in <b>System Settings ▸ Privacy &amp; Security</b>, click <b>Open Anyway</b>.</li>
+    <li>Click <b>Install</b> on Ferry's setup screen and let it finish.</li>
+  </ol>
+  <p class="muted" style="margin-top:30px;font-size:15px">Needs a Mac with Apple silicon (M1 or later) and macOS 14 or later. Mach9 needs macOS 26.4; D3DMetal 4 needs macOS 27.</p>
+</section>
+</main>
+
+<div class="tail">
+  <div class="wrap">
+    <h2>Free, and always will be.</h2>
+    <p>If Ferry got one of your games running, a tip on Ko-fi helps test more games, add new engines as they come out, and pay for an Apple Developer membership so Ferry opens without the "Open Anyway" step.</p>
+    <div class="cta">
+      <a class="btn kofi" href="https://ko-fi.com/rhyvo">Support Ferry on Ko-fi</a>
+      <a class="btn ghost" href="https://github.com/rhyvo/Ferry">Star it on GitHub</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div>Ferry isn't affiliated with Apple, Microsoft, Valve or CodeWeavers. Please only run games you own.<br>Built on <a href="https://www.winehq.org">Wine</a>, <a href="https://developer.apple.com/games/game-porting-toolkit/">Game Porting Toolkit</a>, <a href="https://github.com/metalsharp/MetalSharp-Wine">MetalSharp Wine</a>, <a href="https://github.com/athei/mach9">Mach9</a>, <a href="https://github.com/Gcenx">Gcenx</a>'s builds and <a href="https://github.com/doitsujin/dxvk">DXVK</a>.</div>
+    <div class="links2"><a href="https://github.com/rhyvo/Ferry/releases">Releases</a><a href="https://github.com/rhyvo/Ferry/issues/new/choose">Report a bug</a><a href="https://www.youtube.com/@rhyvo_ferry">YouTube</a><a href="https://ko-fi.com/rhyvo">Ko-fi</a></div>
+  </div>
+</footer>
+
+<script>
+  fetch("https://api.github.com/repos/rhyvo/Ferry/releases/latest")
+    .then(r => r.ok ? r.json() : null)
+    .then(rel => {
+      if (!rel) return;
+      const dmg = (rel.assets || []).find(a => a.name.endsWith(".dmg"));
+      if (dmg) document.getElementById("download").href = dmg.browser_download_url;
+      if (rel.tag_name) document.getElementById("version").textContent = "Version " + rel.tag_name.replace(/^v/, "");
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
