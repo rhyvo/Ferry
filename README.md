@@ -7,6 +7,8 @@
 <p align="center">
   <a href="https://github.com/rhyvo/Ferry/releases/latest"><b>⬇️ Download Ferry</b></a>
   &nbsp;·&nbsp;
+  <a href="https://rhyvo.github.io/Ferry/">🌐 Website</a>
+  &nbsp;·&nbsp;
   <a href="#install">Install</a>
   &nbsp;·&nbsp;
   <a href="#how-ferry-picks-an-engine">How it works</a>
@@ -27,7 +29,7 @@
   <img src="media/ferry-demo.gif" alt="Ferry's library, Compatibility Check, game settings, Troubleshoot, mods, controller mapping, Task Manager, engines, components, Storage and General settings" width="100%">
 </p>
 
-**Ferry runs Windows games and programs on Apple silicon Macs (M1 and later).** Drop in a game, or install Steam, and press Play. Ferry reads the game, picks the best way to run it, installs what it needs, and gets out of the way. It's free, needs no Windows licence, and it's a small native Mac app: a free alternative to CrossOver and Whisky.
+**Ferry runs Windows games and programs on Apple silicon Macs (M1 and later).** Drop in a game, or install Steam, and press Play. Ferry reads the game, picks the best way to run it, installs what it needs, and gets out of the way. It's free, needs no Windows licence, and it's a small native Mac app: a free alternative to CrossOver and Whisky. See it all on [Ferry's website](https://rhyvo.github.io/Ferry/).
 
 ## Watch it run
 
