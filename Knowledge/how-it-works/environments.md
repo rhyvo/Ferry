@@ -8,6 +8,7 @@ How Ferry arranges them:
 - Each game gets its own. Each engine's Wine also gets its own environment for that game, so switching engines can't damage one.
 - Saves are shared between engines. Ferry points every engine's save folders for the game at one shared folder, so switching between engines never hides a save. If a save folder already had files, they're merged in and the old folder is kept beside it, named "(before sharing)". Nothing is deleted.
 - Some programs share another entry's environment, such as a game added inside Steam's environment. Their Windows settings (Windows version, Retina, ⌘ as Ctrl and others) are set on the entry that owns the environment, and their engine can't be switched on its own.
+- Open and Save dialogs: programs that use Windows' newer file dialog get Wine's Explorer-style one (large icons, list and details views, sortable columns), starting in your Mac's Downloads folder unless the program picks a folder. Ferry's small helper for this is copied into each environment at every start. Dialogs that need controls this window can't show, such as folder pickers, stay Wine's simpler one. Explorer-style file dialogs in a game's Compatibility settings turns it off for that game.
 - Windows libraries (Visual C++, DirectX, .NET, XNA, PhysX, OpenAL, video codecs) are downloaded once and reused for every game.
 
 Where things are: Ferry's engines and environments are in ~/Library/Application Support/Ferry. Games themselves run from wherever you keep them.

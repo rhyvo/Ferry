@@ -424,6 +424,7 @@ final class AppModel: ObservableObject {
         var env = baseEnvironment(prefix: prefix)
         env["WINEDEBUG"] = "fixme-all"
         if s.fastSync { env["WINEMSYNC"] = "1"; env["WINEESYNC"] = "1" }
+        if !s.explorerFileDialogs { env["FERRY_FILEDLG"] = "off" }
         if s.advertiseAVX { env["ROSETTA_ADVERTISE_AVX"] = "1" }
         if s.metalHUD { env["MTL_HUD_ENABLED"] = "1" }
         if !s.windowsLanguage.isEmpty {
@@ -821,6 +822,7 @@ final class AppModel: ObservableObject {
             await applyDDrawFixes(p)
             await applyLegacyDirectX(p)
             await prepareDotNet(p)
+            await applyFileDialogs(p)
             applyVSyncHelpers(p)
             applyUpstreamDXMT(p)
             await applyDXVKD3D9(p)

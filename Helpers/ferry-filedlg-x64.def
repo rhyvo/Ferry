@@ -1,0 +1,4 @@
+LIBRARY ferry-filedlg.dll
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

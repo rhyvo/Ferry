@@ -314,6 +314,8 @@ enum SettingsCatalog {
              info: "Handles Windows synchronization with Mach semaphores instead of Wine's server. Faster; rarely incompatible."),
         make("advertiseAVX", "Advertise AVX (Rosetta)", compatibilitySection, bool(\.advertiseAVX),
              info: "Reports AVX support to programs that require it. Applies to engines that run through Rosetta."),
+        make("explorerFileDialogs", "Explorer-style file dialogs", compatibilitySection, bool(\.explorerFileDialogs),
+             info: "Open and Save dialogs get Wine's Explorer-style window, with large icons, list and details views, sortable columns and a Desktop/Documents bar. They start in your Mac's Downloads folder unless the {noun} picks a folder. Dialogs with controls this window can't show (folder pickers, extra buttons or lists) stay Wine's simpler one. Turn it off if a {noun}'s Open or Save dialog misbehaves."),
         make("nativeDirectMusic", "Microsoft's DirectMusic", compatibilitySection, bool(\.nativeDirectMusic),
              info: "Plays the {noun}'s music with Microsoft's DirectMusic instead of Wine's, which is incomplete. Try it if a game from around 1998–2005 has no music, or crashes when music starts. Turn it off if sound gets worse.",
              appliesTo: { $0.arch == .x86 },

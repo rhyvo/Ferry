@@ -1495,6 +1495,8 @@ struct GameSettingsView: View {
                                 .info(c.info("fastSync"))
                             Toggle(c.title("advertiseAVX"), isOn: game.settings.advertiseAVX)
                                 .info(c.info("advertiseAVX"))
+                            Toggle(c.title("explorerFileDialogs"), isOn: game.settings.explorerFileDialogs)
+                                .info(c.info("explorerFileDialogs"))
                             if c.applies("nativeDirectMusic") {
                                 Toggle(isOn: game.settings.nativeDirectMusic) { settingLabel(c.title("nativeDirectMusic"), needs: c.needs("nativeDirectMusic")) }
                                     .disabled(c.needs("nativeDirectMusic") != nil && !g.settings.nativeDirectMusic)

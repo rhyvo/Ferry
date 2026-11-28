@@ -4,6 +4,8 @@ tags: release notes, changelog, what's new, update, version, new features, fixed
 ---
 Newest first. Every version includes the changes before it.
 
+1.3.1: Open and Save dialogs: programs that use Windows' newer file dialog get Wine's Explorer-style one, with large icons, list and details views, sortable columns and a Desktop/Documents bar, starting in your Mac's Downloads folder. Per game in Compatibility, on by default.
+
 1.3.0: An AI assistant built into Ferry, at the bottom of the main window: type a question about a game, and open the bar into a chat or collapse it back to one line. Apple's model on your Mac chats for free, and offers Ferry's own fixes from Troubleshoot and the log check as buttons you press. With your own Claude, ChatGPT or Gemini key it can read logs and settings, change settings (each with Undo) and start games, and MCP servers can add more tools. Other AI apps can use Ferry too (Settings ▸ AI). Large address aware is offered for crashes of older 32-bit games.
 
 1.2.5: .NET programs start: Ferry adds Microsoft's .NET loader and the settings Windows normally sets, and runs programs made for .NET 2.0–3.5 on 4.8. Adds Managed DirectX for older .NET launchers. Auto picks the engine for the game a launcher starts. New Tessellation detail setting for DirectX 11 games on Mach9, and a Troubleshoot page for objects that flicker or vanish.

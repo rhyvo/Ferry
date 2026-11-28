@@ -32,7 +32,7 @@ func runKnowledgePackTests() {
         check(false, "Knowledge/ loads")
         return
     }
-    check(manifest.version == 4 && !manifest.files.isEmpty && manifest.entriesAreSafe, "Knowledge manifest")
+    check(manifest.version == 5 && !manifest.files.isEmpty && manifest.entriesAreSafe, "Knowledge manifest")
     for path in manifest.files {
         let id = String(path.dropLast(3))
         let doc = repoPack.doc(id)

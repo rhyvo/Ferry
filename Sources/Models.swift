@@ -177,6 +177,7 @@ struct GameSettings: Codable, Equatable {
     var nativeXAudio2: Bool = true
     var webView2: Bool = false
     var showOnDiscord: Bool = true
+    var explorerFileDialogs: Bool = true
 
     static func defaults() -> GameSettings {
         let d = UserDefaults.standard
@@ -236,6 +237,7 @@ extension GameSettings {
         nativeDirectPlay = (try? c.decodeIfPresent(Bool.self, forKey: .nativeDirectPlay)) ?? d.nativeDirectPlay
         windowsLanguage = (try? c.decodeIfPresent(String.self, forKey: .windowsLanguage)) ?? d.windowsLanguage
         showOnDiscord = (try? c.decodeIfPresent(Bool.self, forKey: .showOnDiscord)) ?? d.showOnDiscord
+        explorerFileDialogs = (try? c.decodeIfPresent(Bool.self, forKey: .explorerFileDialogs)) ?? d.explorerFileDialogs
         webView2 = (try? c.decodeIfPresent(Bool.self, forKey: .webView2)) ?? d.webView2
         nativeXAudio2 = (try? c.decodeIfPresent(Bool.self, forKey: .nativeXAudio2)) ?? d.nativeXAudio2
     }
